@@ -14,6 +14,7 @@ abstract final class FolioBottomSheet {
   static Future<T?> show<T>({
     required BuildContext context,
     required WidgetBuilder builder,
+    double backdropOpacity = 0.25,
   }) async {
     if (!context.mounted) return null;
 
@@ -23,9 +24,9 @@ abstract final class FolioBottomSheet {
       builder: builder,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       disableAnimations: MediaQuery.disableAnimationsOf(context),
+      backdropOpacity: backdropOpacity,
     );
     final result = await Navigator.of(context).push<T>(route);
-    // Keep the caller's modal guard active until the sheet AND blur are gone.
     await route.completed;
     return result;
   }
@@ -36,16 +37,17 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
     required this.builder,
     required this.barrierLabel,
     required this.disableAnimations,
+    required this.backdropOpacity,
   });
 
   static const _openDuration = Duration(milliseconds: 700);
   static const _closeDuration = Duration(milliseconds: 350);
-  // Use the nominal durations, including when reduced motion is enabled.
   static const _backdropRatio = 350 / 700;
   static final _fullBlur = ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12);
 
   final WidgetBuilder builder;
   final bool disableAnimations;
+  final double backdropOpacity;
 
   @override
   final String barrierLabel;
@@ -143,18 +145,14 @@ class _BottomSheetPosition extends StatefulWidget {
 }
 
 class _BottomSheetPositionState extends State<_BottomSheetPosition> {
-  late final CurvedAnimation _position;
   Curve? _dragCurve;
+
+  static const Curve _openingCurve = Cubic(0.24, 1.2, 0.2, 1.0);
+  static const Curve _closingCurve = Curves.easeInOutCubic;
 
   @override
   void initState() {
     super.initState();
-    // Keep one curve for the route lifetime, also when an opening is reversed.
-    _position = CurvedAnimation(
-      parent: widget.animation,
-      curve: const Cubic(0.24, 1.2, 0.2, 1.0),
-      reverseCurve: Curves.easeInOutCubic,
-    );
     widget.animation.addStatusListener(_onStatus);
   }
 
@@ -182,8 +180,15 @@ class _BottomSheetPositionState extends State<_BottomSheetPosition> {
   @override
   void dispose() {
     widget.animation.removeStatusListener(_onStatus);
-    _position.dispose();
     super.dispose();
+  }
+
+  double get _positionValue {
+    final curve = _dragCurve ??
+        (widget.animation.status == AnimationStatus.reverse
+            ? _closingCurve
+            : _openingCurve);
+    return curve.transform(widget.animation.value);
   }
 
   @override
@@ -221,7 +226,7 @@ class _BottomSheetPositionState extends State<_BottomSheetPosition> {
                 offset: Offset(
                   0,
                   _dragCurve == null
-                      ? 750 * (1 - _position.value)
+                      ? 750 * (1 - _positionValue)
                       : (16 + bottom) * drag,
                 ),
                 child: FractionalTranslation(

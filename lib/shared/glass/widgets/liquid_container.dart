@@ -56,7 +56,8 @@ class LiquidGlass extends StatelessWidget {
        onExpansionChanged = null,
        borderRadius = null,
        padding = EdgeInsets.zero,
-       liquidMotion = false;
+       liquidMotion = false,
+       fill = null;
 
   const LiquidGlass.morph({
     required this.geometryBuilder,
@@ -76,13 +77,15 @@ class LiquidGlass extends StatelessWidget {
        shapeTokens = const LiquidShapeTokens(),
        borderRadius = null,
        padding = EdgeInsets.zero,
-       liquidMotion = false;
+       liquidMotion = false,
+       fill = null;
 
   const LiquidGlass.panel({
     required this.child,
     this.borderRadius = 24,
     this.padding = EdgeInsets.zero,
     this.liquidMotion = false,
+    this.fill,
     super.key,
   }) : _kind = _LiquidKind.panel,
        size = null,
@@ -124,6 +127,9 @@ class LiquidGlass extends StatelessWidget {
   /// Deform only a panel's outer material; leave its inner content unchanged.
   final bool liquidMotion;
 
+  /// Background fill color for the panel. Defaults to [LiquidCase]'s default.
+  final Color? fill;
+
   @override
   Widget build(BuildContext context) {
     switch (_kind) {
@@ -132,12 +138,14 @@ class LiquidGlass extends StatelessWidget {
           return LiquidMotionPanel(
             borderRadius: borderRadius ?? 24,
             padding: padding,
+            fill: fill,
             child: child!,
           );
         }
         return LiquidCase(
           borderRadius: borderRadius ?? 24,
           padding: padding,
+          fill: fill ?? const Color.fromARGB(147, 255, 0, 0),
           child: child!,
         );
       case _LiquidKind.morph:

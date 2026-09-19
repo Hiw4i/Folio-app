@@ -14,6 +14,7 @@ class GlassShell extends StatelessWidget {
     required this.press,
     required this.focused,
     this.blurSigma,
+    this.fill,
     super.key,
   });
 
@@ -26,6 +27,10 @@ class GlassShell extends StatelessWidget {
   /// [LiquidBlur.filter]; reduced sigmas resolve through a small quantized
   /// cache (0.5 steps) so no filter object is allocated per frame.
   final double? blurSigma;
+
+  /// Optional fill override. When null uses the shared default [_ShellPainter]
+  /// glass tint; panels/sheets pass their own opaque surface color.
+  final Color? fill;
 
   static ui.ImageFilter get backdropBlur => LiquidBlur.filter;
 
@@ -73,6 +78,7 @@ class GlassShell extends StatelessWidget {
                   press: press,
                   focused: focused,
                   blurEnabled: blurEnabled,
+                  fill: fill,
                 ),
               ),
             ),
@@ -154,6 +160,7 @@ class _ShellPainter extends CustomPainter {
     required this.press,
     required this.focused,
     required this.blurEnabled,
+    this.fill,
   });
 
   final Path path;
@@ -162,6 +169,7 @@ class _ShellPainter extends CustomPainter {
   final bool focused;
 
   final bool blurEnabled;
+  final Color? fill;
 
   /// Fully static paint configs: shared instead of reallocated per repaint.
   /// Balanced mid-gray tint: everything lighter than the fill darkens
@@ -183,7 +191,15 @@ class _ShellPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.drawPath(path, blurEnabled ? _fillPaint : _opaqueFillPaint);
+    final Paint fillPaint;
+    if (blurEnabled) {
+      fillPaint = fill == null
+          ? _fillPaint
+          : (Paint()..color = fill!);
+    } else {
+      fillPaint = _opaqueFillPaint;
+    }
+    canvas.drawPath(path, fillPaint);
     // The inset edge belongs to the material, not to the backdrop filter.
     // Keep its original depth when the user turns background blur off.
     canvas.save();
@@ -246,5 +262,6 @@ class _ShellPainter extends CustomPainter {
       oldDelegate.glowCenter != glowCenter ||
       oldDelegate.press != press ||
       oldDelegate.focused != focused ||
-      oldDelegate.blurEnabled != blurEnabled;
+      oldDelegate.blurEnabled != blurEnabled ||
+      oldDelegate.fill != fill;
 }

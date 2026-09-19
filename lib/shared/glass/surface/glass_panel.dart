@@ -12,6 +12,7 @@ class GlassPanel extends StatelessWidget {
     this.borderRadius = 24,
     this.padding = EdgeInsets.zero,
     this.liquidMotion = false,
+    this.fill,
     super.key,
   });
 
@@ -19,6 +20,7 @@ class GlassPanel extends StatelessWidget {
   final double borderRadius;
   final EdgeInsetsGeometry padding;
   final bool liquidMotion;
+  final Color? fill;
 
   @override
   Widget build(BuildContext context) {
@@ -26,6 +28,7 @@ class GlassPanel extends StatelessWidget {
       liquidMotion: liquidMotion,
       borderRadius: borderRadius,
       padding: padding,
+      fill: fill,
       child: child,
     );
   }

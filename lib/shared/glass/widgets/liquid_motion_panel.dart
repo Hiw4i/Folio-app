@@ -17,12 +17,14 @@ class LiquidMotionPanel extends StatefulWidget {
     required this.child,
     this.borderRadius = 24,
     this.padding = EdgeInsets.zero,
+    this.fill,
     super.key,
   }) : assert(borderRadius >= 0);
 
   final Widget child;
   final double borderRadius;
   final EdgeInsetsGeometry padding;
+  final Color? fill;
 
   @override
   State<LiquidMotionPanel> createState() => _LiquidMotionPanelState();
@@ -157,6 +159,7 @@ class _LiquidMotionPanelState extends State<LiquidMotionPanel>
                         press: _motion.press,
                         focused: false,
                         blurSigma: _motion.backdropBlurSigma,
+                        fill: widget.fill,
                       );
                     },
                   );
