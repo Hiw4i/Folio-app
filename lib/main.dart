@@ -84,10 +84,10 @@ class _FolioAppState extends State<FolioApp> {
     return FolioSettingsScope(
       controller: _settingsController,
       child: WidgetsApp(
-        color: FolioColors.background,
+        color: appColors.background,
         debugShowCheckedModeBanner: false,
         title: 'Folio',
-        textStyle: FolioText.body,
+        textStyle: AppTextStyles.body(context),
         localizationsDelegates: const <LocalizationsDelegate<dynamic>>[
           DefaultMaterialLocalizations.delegate,
         ],
@@ -103,18 +103,18 @@ class _FolioAppState extends State<FolioApp> {
         },
         builder: (context, child) {
           return TextSelectionTheme(
-            data: const TextSelectionThemeData(
-              cursorColor: FolioColors.cursor,
-              selectionColor: FolioColors.selection,
-              selectionHandleColor: FolioColors.selectionHandle,
+            data: TextSelectionThemeData(
+              cursorColor: appColors.cursor,
+              selectionColor: appColors.selection,
+              selectionHandleColor: appColors.selectionHandle,
             ),
             child: ScrollConfiguration(
               behavior: const FolioScrollBehavior(),
               child: DefaultSelectionStyle(
-                cursorColor: FolioColors.cursor,
-                selectionColor: FolioColors.selection,
+                cursorColor: appColors.cursor,
+                selectionColor: appColors.selection,
                 child: DefaultTextStyle(
-                  style: FolioText.body,
+                  style: AppTextStyles.body(context),
                   child: child ?? const SizedBox.shrink(),
                 ),
               ),

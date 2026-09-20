@@ -92,10 +92,10 @@ class _LibraryScreenState extends State<LibraryScreen>
         PageRouteBuilder<void>(
           transitionDuration: MediaQuery.disableAnimationsOf(context)
               ? Duration.zero
-              : const Duration(milliseconds: 180),
+              : AppDurations.fast,
           reverseTransitionDuration: MediaQuery.disableAnimationsOf(context)
               ? Duration.zero
-              : const Duration(milliseconds: 160),
+              : AppDurations.fast,
           pageBuilder: (context, animation, secondaryAnimation) => ReaderScreen(
             document: document,
             contentSource: widget.documentContentSource,
@@ -185,7 +185,7 @@ class _LibraryScreenState extends State<LibraryScreen>
         },
         child: ColoredBox(
           key: const ValueKey<String>('folio_surface'),
-          color: FolioColors.background,
+          color: appColors.background,
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
@@ -237,7 +237,7 @@ class _LibraryContent extends StatelessWidget {
     final recent = controller.recentDocuments;
     final documents = controller.regularDocuments;
     return ScrollEdgeFade(
-      color: FolioColors.background,
+      color: appColors.background,
       child: CustomScrollView(
         key: const ValueKey<String>('document_list'),
         controller: scrollController,
@@ -245,13 +245,18 @@ class _LibraryContent extends StatelessWidget {
         slivers: <Widget>[
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(20, topPadding + 28, 20, 19),
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                topPadding + AppSpacing.xxl,
+                AppSpacing.lg,
+                AppSpacing.md,
+              ),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: <Widget>[
-                  const Text(
+                  Text(
                     'Folio',
-                    style: FolioText.title,
+                    style: AppTextStyles.heading(context),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -276,7 +281,7 @@ class _LibraryContent extends StatelessWidget {
               onSelected: controller.selectFilter,
             ),
           ),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          SliverToBoxAdapter(child: SizedBox(height: AppSpacing.md)),
           if (controller.access == LibraryAccess.denied &&
               controller.loadState == LibraryLoadState.ready)
             SliverToBoxAdapter(
@@ -327,7 +332,7 @@ class _LibraryContent extends StatelessWidget {
                 onBeginOpen: onBeginOpen,
                 onReaderClosed: onReaderClosed,
               ),
-              const SliverToBoxAdapter(child: SizedBox(height: 23)),
+              SliverToBoxAdapter(child: SizedBox(height: AppSpacing.xl)),
             ],
             if (documents.isNotEmpty) ...<Widget>[
               _SectionHeader(
@@ -394,11 +399,14 @@ class _DocumentSliver extends StatelessWidget {
                     onReaderClosed: onReaderClosed,
                   ),
                   if (index < documents.length - 1)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 82, right: 20),
+                    Padding(
+                      padding: EdgeInsets.only(
+                        left: AppSpacing.xl + AppSpacing.lg,
+                        right: AppSpacing.lg,
+                      ),
                       child: SizedBox(
                         height: 0.8,
-                        child: ColoredBox(color: FolioColors.separator),
+                        child: ColoredBox(color: appColors.separator),
                       ),
                     ),
                 ],
@@ -435,8 +443,8 @@ class _DocumentOpenContainer extends StatelessWidget {
     return OpenContainer<void>(
       tappable: false,
       closedColor: const Color(0x00000000),
-      openColor: FolioColors.background,
-      middleColor: FolioColors.background,
+      openColor: appColors.background,
+      middleColor: appColors.background,
       closedElevation: 0,
       openElevation: 0,
       closedShape: const RoundedRectangleBorder(),
@@ -445,14 +453,14 @@ class _DocumentOpenContainer extends StatelessWidget {
       transitionType: ContainerTransitionType.fade,
       transitionDuration: reducedMotion
           ? Duration.zero
-          : const Duration(milliseconds: 340),
+          : AppDurations.medium,
       closedBuilder: (context, openContainer) => DocumentRow(
         key: ValueKey<String>('document_${document.id}'),
         document: document,
         onTapDown: () {
           // Warm the renderer while the container morph still runs, so the
           // reader route adopts in-flight I/O instead of starting it after
-          // the 340ms transition.
+          // the transition.
           ReaderPreloader.prime(
             document: document,
             contentSource: documentContentSource,
@@ -479,7 +487,7 @@ class _DocumentOpenContainer extends StatelessWidget {
           } else {
             unawaited(
               Future<void>.delayed(
-                const Duration(milliseconds: 360),
+                AppDurations.medium,
                 () => controller.markOpened(document),
               ),
             );
@@ -517,12 +525,17 @@ class _SectionHeader extends StatelessWidget {
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 640),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              0,
+              AppSpacing.lg,
+              AppSpacing.sm,
+            ),
             child: Row(
               children: <Widget>[
-                Text(title, style: FolioText.section),
-                const SizedBox(width: 7),
-                Text('$count', style: FolioText.metadata),
+                Text(title, style: AppTextStyles.section(context)),
+                SizedBox(width: AppSpacing.xs),
+                Text('$count', style: AppTextStyles.metadata(context)),
               ],
             ),
           ),
@@ -543,33 +556,38 @@ class _PermissionNotice extends StatelessWidget {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 600),
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 22),
+          padding: EdgeInsets.fromLTRB(
+            AppSpacing.lg,
+            0,
+            AppSpacing.lg,
+            AppSpacing.xl,
+          ),
           child: DecoratedBox(
             decoration: BoxDecoration(
               color: const Color(0x0DFFFFFF),
-              borderRadius: BorderRadius.circular(24),
+              borderRadius: AppRadius.sheetRadius,
               border: Border.all(color: const Color(0x1FFFFFFF), width: 0.8),
             ),
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 6, 4),
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.lg,
+                AppSpacing.lg,
+                AppSpacing.xs,
+                AppSpacing.sm,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  const Text(
+                  Text(
                     'Allow file access',
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      color: FolioColors.textPrimary,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                    style: AppTextStyles.subheading(context),
                   ),
-                  const SizedBox(height: 7),
-                  const Padding(
-                    padding: EdgeInsets.only(right: 14),
+                  SizedBox(height: AppSpacing.xs),
+                  Padding(
+                    padding: EdgeInsets.only(right: AppSpacing.md),
                     child: Text(
                       'Folio needs access to find documents stored on this device. You can still open individual files from other apps.',
-                      style: FolioText.metadata,
+                      style: AppTextStyles.metadata(context),
                     ),
                   ),
                   Align(
@@ -628,30 +646,29 @@ class _UnavailableRecovery extends StatelessWidget {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 380),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  // Та же статичная liquid-панель, что и в ридере.
+                  padding: EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
                   child: GlassPanel(
-                    borderRadius: 28,
-                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 12),
+                    borderRadius: AppRadius.xxxl,
+                    padding: EdgeInsets.fromLTRB(
+                      AppSpacing.xl,
+                      AppSpacing.xl,
+                      AppSpacing.xl,
+                      AppSpacing.md,
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: <Widget>[
-                        const Text(
-                          'File access expired',
-                          style: TextStyle(
-                            fontFamily: 'Inter',
-                            color: FolioColors.textPrimary,
-                            fontSize: 19,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
                         Text(
-                          'Folio can no longer reach “${document.name}”. Select it again or remove it from Recents.',
-                          textAlign: TextAlign.center,
-                          style: FolioText.metadata,
+                          'File access expired',
+                          style: AppTextStyles.overlayTitle(context),
                         ),
-                        const SizedBox(height: 4),
+                        SizedBox(height: AppSpacing.md),
+                        Text(
+                          'Folio can no longer reach "${document.name}". Select it again or remove it from Recents.',
+                          textAlign: TextAlign.center,
+                          style: AppTextStyles.metadata(context),
+                        ),
+                        SizedBox(height: AppSpacing.sm),
                         LiquidGlassButton(
                           label: 'Grant access again',
                           width: 190,
@@ -661,16 +678,16 @@ class _UnavailableRecovery extends StatelessWidget {
                         GestureDetector(
                           behavior: HitTestBehavior.opaque,
                           onTap: onRemove,
-                          child: const Padding(
-                            padding: EdgeInsets.fromLTRB(16, 9, 16, 15),
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(
+                              AppSpacing.lg,
+                              AppSpacing.md,
+                              AppSpacing.lg,
+                              AppSpacing.lg,
+                            ),
                             child: Text(
                               'Remove from Recents',
-                              style: TextStyle(
-                                fontFamily: 'Inter',
-                                color: FolioColors.textSecondary,
-                                fontSize: 13,
-                                fontWeight: FontWeight.w500,
-                              ),
+                              style: AppTextStyles.buttonSmall(context),
                             ),
                           ),
                         ),
@@ -701,13 +718,18 @@ class _RefreshFailureNotice extends StatelessWidget {
           behavior: HitTestBehavior.opaque,
           onTap: onRetry,
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.lg,
+              0,
+              AppSpacing.lg,
+              AppSpacing.lg,
+            ),
             child: Semantics(
               button: true,
               label: 'Retry library refresh',
-              child: const Text(
+              child: Text(
                 'Library refresh paused. Tap to try again.',
-                style: FolioText.metadata,
+                style: AppTextStyles.metadata(context),
               ),
             ),
           ),
@@ -727,26 +749,25 @@ class _StatusView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(36, 0, 36, 110),
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.xxxxl,
+          0,
+          AppSpacing.xxxxl,
+          AppSpacing.xxxxxl + AppSpacing.xxl,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                color: FolioColors.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.3,
-              ),
+              style: AppTextStyles.subheading(context),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: AppSpacing.md),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: FolioText.metadata,
+              style: AppTextStyles.metadata(context),
             ),
           ],
         ),

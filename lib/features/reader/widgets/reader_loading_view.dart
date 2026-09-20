@@ -27,17 +27,17 @@ class ReaderLoadingView extends StatefulWidget {
   /// (Office staged overlay, PDF byte banner).
   final bool immediate;
 
-  static const Duration grace = Duration(milliseconds: 350);
-  static const Duration textGrace = Duration(milliseconds: 700);
-  static const Duration fade = Duration(milliseconds: 200);
+  static const Duration grace = AppDurations.grace;
+  static const Duration textGrace = AppDurations.slow;
+  static const Duration fade = AppDurations.fast;
 
-  static const TextStyle titleStyle = TextStyle(
-    fontFamily: 'Inter',
-    color: FolioColors.textPrimary,
-    fontSize: 20,
-    fontWeight: FontWeight.w600,
-    letterSpacing: -0.25,
-  );
+  static TextStyle titleStyle(BuildContext context) => TextStyle(
+        fontFamily: 'Inter',
+        color: appColors.textPrimary,
+        fontSize: 20,
+        fontWeight: FontWeight.w600,
+        letterSpacing: -0.25,
+      );
 
   @override
   State<ReaderLoadingView> createState() => _ReaderLoadingViewState();
@@ -99,18 +99,23 @@ class _ReaderLoadingViewState extends State<ReaderLoadingView> {
           excluding: !_visible,
           child: Semantics(
             label: 'Loading document',
-            child: const Center(
+            child: Center(
               child: Padding(
-                padding: EdgeInsets.fromLTRB(34, 70, 34, 100),
+                padding: EdgeInsets.fromLTRB(
+                  AppSpacing.xxxxl,
+                  AppSpacing.xxxxxl + AppSpacing.xl,
+                  AppSpacing.xxxxl,
+                  AppSpacing.xxxxxl + AppSpacing.xl + AppSpacing.lg,
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
-                    ReaderLoadingDots(),
-                    SizedBox(height: 18),
+                    const ReaderLoadingDots(),
+                    SizedBox(height: AppSpacing.lg),
                     Text(
                       'Opening document',
                       textAlign: TextAlign.center,
-                      style: ReaderLoadingView.titleStyle,
+                      style: ReaderLoadingView.titleStyle(context),
                     ),
                   ],
                 ),
@@ -206,7 +211,7 @@ class _Dot extends StatelessWidget {
       height: 6,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: FolioColors.textPrimary.withValues(alpha: opacity),
+        color: appColors.textPrimary.withValues(alpha: opacity),
       ),
     );
   }

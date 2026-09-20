@@ -50,7 +50,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       margin: 0,
       layoutPages: layoutPdfReadingPages,
       sizeDelegateProvider: pdfReadingSizeDelegateProvider,
-      backgroundColor: FolioColors.background,
+      backgroundColor: appColors.background,
       pageDropShadow: const BoxShadow(
         color: Color(0x7A000000),
         blurRadius: 12,
@@ -100,8 +100,8 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       scrollPhysicsScale: const BouncingScrollPhysics(
         decelerationRate: ScrollDecelerationRate.fast,
       ),
-      matchTextColor: FolioColors.pdfSearchMatch,
-      activeMatchTextColor: FolioColors.pdfActiveSearchMatch,
+      matchTextColor: appColors.pdfSearchMatch,
+      activeMatchTextColor: appColors.pdfActiveSearchMatch,
       pagePaintCallbacks: <PdfViewerPagePaintCallback>[
         widget.renderer.paintSearchMatches,
       ],
@@ -119,7 +119,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
         // Same unified surface as every other format: dots plus the single
         // `Opening document` line.
         return ColoredBox(
-          color: FolioColors.background,
+          color: appColors.background,
           child: ReaderLoadingView(
             document: widget.renderer.document,
             immediate: true,
@@ -227,10 +227,10 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       // the app's TextSelectionTheme (the app itself uses WidgetsApp).
       child: Theme(
         data: Theme.of(context).copyWith(
-          textSelectionTheme: const TextSelectionThemeData(
-            selectionColor: FolioColors.selection,
-            selectionHandleColor: FolioColors.selectionHandle,
-            cursorColor: FolioColors.cursor,
+          textSelectionTheme: TextSelectionThemeData(
+            selectionColor: appColors.selection,
+            selectionHandleColor: appColors.selectionHandle,
+            cursorColor: appColors.cursor,
           ),
         ),
         child: PdfViewer(documentRef, controller: _controller, params: _params),

@@ -4,12 +4,13 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import '../settings/folio_settings_scope.dart';
+import '../theme/folio_theme.dart';
 
 /// A floating bottom sheet with the reference dialog's entrance and backdrop.
 /// Pair with FolioSheetContent for the shared Settings-style surface and body.
 /// There is no fullscreen or centred-dialog presentation.
 abstract final class FolioBottomSheet {
-  static const double cornerRadius = 32;
+  static const double cornerRadius = AppRadius.xxxl;
 
   static Future<T?> show<T>({
     required BuildContext context,
@@ -40,8 +41,8 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
     required this.backdropOpacity,
   });
 
-  static const _openDuration = Duration(milliseconds: 700);
-  static const _closeDuration = Duration(milliseconds: 350);
+  static const _openDuration = AppDurations.sheetOpen;
+  static const _closeDuration = AppDurations.sheetClose;
   static const _backdropRatio = 350 / 700;
   static final _fullBlur = ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12);
 
@@ -200,13 +201,13 @@ class _BottomSheetPositionState extends State<_BottomSheetPosition> {
       child: AnimatedPadding(
         duration: widget.disableAnimations
             ? Duration.zero
-            : const Duration(milliseconds: 220),
+            : AppDurations.fast,
         curve: Curves.easeOutCubic,
         padding: EdgeInsets.fromLTRB(
-          16 + media.viewPadding.left,
-          16 + media.viewPadding.top,
-          16 + media.viewPadding.right,
-          16 + bottom,
+          AppSpacing.lg + media.viewPadding.left,
+          AppSpacing.lg + media.viewPadding.top,
+          AppSpacing.lg + media.viewPadding.right,
+          AppSpacing.lg + bottom,
         ),
         // Keep Folio's existing width cap, without switching to a dialog.
         child: ConstrainedBox(
@@ -227,7 +228,7 @@ class _BottomSheetPositionState extends State<_BottomSheetPosition> {
                   0,
                   _dragCurve == null
                       ? 750 * (1 - _positionValue)
-                      : (16 + bottom) * drag,
+                      : (AppSpacing.lg + bottom) * drag,
                 ),
                 child: FractionalTranslation(
                   translation: Offset(0, drag),

@@ -217,16 +217,16 @@ class LiquidSearchMorph extends StatelessWidget {
                                     // the adaptive mirror above (same metrics, so
                                     // caret/selection stay aligned). No shadows —
                                     // even a transparent glyph would cast them.
-                                    style: const TextStyle(
-                                      fontFamily: 'Inter',
-                                      color: Color(0x00FFFFFF),
-                                      fontSize: 16,
-                                      height: 1.2,
-                                    ),
-                                    cursorColor: FolioColors.cursor,
-                                    backgroundCursorColor:
-                                        FolioColors.cursorBackground,
-                                    selectionColor: FolioColors.selection,
+style: const TextStyle(
+                                       fontFamily: 'Inter',
+                                       color: Color(0x00FFFFFF),
+                                       fontSize: 16,
+                                       height: 1.2,
+                                     ),
+                                     cursorColor: appColors.cursor,
+                                     backgroundCursorColor:
+                                         appColors.cursorBackground,
+                                     selectionColor: appColors.selection,
                                     maxLines: 1,
                                     keyboardType: TextInputType.text,
                                     textInputAction: TextInputAction.search,

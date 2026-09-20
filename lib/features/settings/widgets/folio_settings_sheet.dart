@@ -37,7 +37,7 @@ class FolioSettingsSheet extends StatelessWidget {
               icon: LucideIcons.gauge,
               title: 'Performance',
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: AppSpacing.sm),
             FolioSheetCard(
               children: <Widget>[
                 _SettingsSwitch(
@@ -59,12 +59,12 @@ class FolioSettingsSheet extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: 22),
+            SizedBox(height: AppSpacing.xl),
             const FolioSheetSectionHeader(
               icon: LucideIcons.bookOpen,
               title: 'Reading',
             ),
-            const SizedBox(height: 10),
+            SizedBox(height: AppSpacing.sm),
             FolioSheetCard(
               children: <Widget>[
                 _SettingsSwitch(
@@ -81,10 +81,10 @@ class FolioSettingsSheet extends StatelessWidget {
               ],
             ),
             if (controller.hasSaveError) ...<Widget>[
-              const SizedBox(height: 12),
-              const Text(
+              SizedBox(height: AppSpacing.md),
+              Text(
                 'Could not save settings. Changes still apply for this session.',
-                style: FolioText.metadata,
+                style: AppTextStyles.metadata(context),
               ),
               TextButton(
                 onPressed: controller.retrySave,
@@ -116,20 +116,20 @@ class _SettingsSwitch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 10),
+      padding: AppSpacing.settingsRowPadding,
       child: Row(
         children: <Widget>[
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Text(title, style: FolioText.body),
-                const SizedBox(height: 3),
-                Text(description, style: FolioText.metadata),
+                Text(title, style: AppTextStyles.body(context)),
+                SizedBox(height: AppSpacing.xs),
+                Text(description, style: AppTextStyles.metadata(context)),
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: AppSpacing.lg),
           Semantics(
             label: title,
             child: Switch.adaptive(

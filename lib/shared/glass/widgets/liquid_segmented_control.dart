@@ -329,7 +329,7 @@ class _SegmentLabel extends StatelessWidget {
                       maxLines: 1,
                       style: TextStyle(
                         fontFamily: 'Inter',
-                        color: FolioColors.textPrimary,
+                        color: appColors.textPrimary,
                         fontSize: 13.5,
                         fontWeight: selected > 0.58
                             ? FontWeight.w600

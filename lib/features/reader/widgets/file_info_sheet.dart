@@ -86,7 +86,7 @@ class _FileInfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return MergeSemantics(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
+        padding: AppSpacing.settingsRowPadding,
         child: LayoutBuilder(
           builder: (context, constraints) {
             // Do not squeeze long filenames or scaled labels into two tiny
@@ -98,9 +98,9 @@ class _FileInfoRow extends StatelessWidget {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Text(label, style: FolioText.body),
-                  const SizedBox(height: 3),
-                  Text(value, style: FolioText.metadata),
+                  Text(label, style: AppTextStyles.body(context)),
+                  SizedBox(height: AppSpacing.xs),
+                  Text(value, style: AppTextStyles.metadata(context)),
                 ],
               );
             }
@@ -109,13 +109,13 @@ class _FileInfoRow extends StatelessWidget {
               children: <Widget>[
                 // Label hugs its content; the value takes all remaining
                 // width so long filenames wrap as late as possible.
-                Text(label, style: FolioText.body),
-                const SizedBox(width: 16),
+                Text(label, style: AppTextStyles.body(context)),
+                SizedBox(width: AppSpacing.lg),
                 Expanded(
                   child: Text(
                     value,
                     textAlign: TextAlign.end,
-                    style: FolioText.metadata,
+                    style: AppTextStyles.metadata(context),
                   ),
                 ),
               ],

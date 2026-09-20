@@ -7,22 +7,22 @@ class LibraryBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const RepaintBoundary(
+    return RepaintBoundary(
       child: DecoratedBox(
         decoration: BoxDecoration(
-          color: FolioColors.background,
+          color: appColors.background,
           gradient: RadialGradient(
             center: Alignment(0.75, -0.65),
             radius: 1.05,
             colors: <Color>[
-              Color(0xFF292824),
-              Color(0xFF131416),
-              FolioColors.background,
+              const Color(0xFF292824),
+              const Color(0xFF131416),
+              appColors.background,
             ],
-            stops: <double>[0, 0.42, 1],
+            stops: const <double>[0, 0.42, 1],
           ),
         ),
-        child: SizedBox.shrink(),
+        child: const SizedBox.shrink(),
       ),
     );
   }

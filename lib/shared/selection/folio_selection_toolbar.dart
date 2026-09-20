@@ -146,7 +146,7 @@ class _PillDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
+    return SizedBox(
       width: _FolioPill.dividerExtent,
       height: _FolioPill.buttonExtent,
       child: Center(
@@ -154,7 +154,7 @@ class _PillDivider extends StatelessWidget {
           width: 1,
           height: 20,
           child: AdaptiveGlassDecoration(
-            child: ColoredBox(color: FolioColors.separator),
+            child: ColoredBox(color: appColors.separator),
           ),
         ),
       ),

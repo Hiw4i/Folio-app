@@ -24,10 +24,10 @@ class FolioSheetContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return Theme(
       data: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: FolioColors.background,
-        colorScheme: const ColorScheme.dark(
-          primary: FolioColors.textPrimary,
-          surface: FolioColors.background,
+        scaffoldBackgroundColor: appColors.background,
+        colorScheme: ColorScheme.dark(
+          primary: appColors.textPrimary,
+          surface: appColors.background,
         ),
       ),
       child: Material(
@@ -41,7 +41,7 @@ class FolioSheetContent extends StatelessWidget {
             borderRadius: FolioBottomSheet.cornerRadius,
             fill: const Color(0xE61A1B1E),
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              padding: AppSpacing.sheetPadding,
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -50,10 +50,10 @@ class FolioSheetContent extends StatelessWidget {
                     child: Container(
                       width: 34,
                       height: 4,
-                      margin: const EdgeInsets.only(bottom: 24),
+                      margin: EdgeInsets.only(bottom: AppSpacing.xl),
                       decoration: BoxDecoration(
                         color: const Color(0x55FFFFFF),
-                        borderRadius: BorderRadius.circular(2),
+                        borderRadius: AppRadius.xsRadius,
                       ),
                     ),
                   ),
@@ -65,17 +65,17 @@ class FolioSheetContent extends StatelessWidget {
                         title.toUpperCase(),
                         semanticsLabel: title,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontFamily: 'Inter',
                           fontSize: 24,
                           fontWeight: FontWeight.w600,
-                          color: FolioColors.textPrimary,
+                          color: appColors.textPrimary,
                           decoration: TextDecoration.none,
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  SizedBox(height: AppSpacing.lg),
                   child,
                 ],
               ),
@@ -111,30 +111,30 @@ class FolioSheetSectionHeader extends StatelessWidget {
             height: 30,
             decoration: BoxDecoration(
               color: const Color(0x14FFFFFF),
-              borderRadius: BorderRadius.circular(9),
-              border: Border.all(color: FolioColors.separator, width: 0.8),
+              borderRadius: AppRadius.mdRadius,
+              border: Border.all(color: appColors.separator, width: 0.8),
             ),
             child: iconPath != null
                 ? SvgPicture.asset(
                     iconPath!,
                     width: 15,
                     height: 15,
-                    colorFilter: const ColorFilter.mode(
-                      FolioColors.textPrimary,
+                    colorFilter: ColorFilter.mode(
+                      appColors.textPrimary,
                       BlendMode.srcIn,
                     ),
                   )
-                : Icon(icon, size: 15, color: FolioColors.textPrimary),
+                : Icon(icon, size: 15, color: appColors.textPrimary),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: AppSpacing.md),
           Expanded(
             child: Text(
               title,
-              style: const TextStyle(
+              style: TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: FolioColors.textPrimary,
+                color: appColors.textPrimary,
               ),
             ),
           ),
@@ -155,11 +155,14 @@ class FolioSheetCard extends StatelessWidget {
     return DecoratedBox(
       decoration: BoxDecoration(
         color: const Color(0x0DFFFFFF),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: FolioColors.separator, width: 0.8),
+        borderRadius: AppRadius.cardRadius,
+        border: Border.all(color: appColors.separator, width: 0.8),
       ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 6, 16, 6),
+        padding: EdgeInsets.symmetric(
+          horizontal: AppSpacing.lg,
+          vertical: AppSpacing.sm,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: children,
@@ -174,10 +177,10 @@ class FolioSheetDivider extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
+    return SizedBox(
       height: 0.8,
       width: double.infinity,
-      child: ColoredBox(color: FolioColors.separator),
+      child: ColoredBox(color: appColors.separator),
     );
   }
 }

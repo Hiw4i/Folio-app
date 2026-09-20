@@ -58,7 +58,7 @@ class TextDocumentView extends StatelessWidget {
       document: content,
       onSelectionChanged: onSelectionChanged,
       child: ScrollEdgeFade(
-        color: FolioColors.background,
+        color: appColors.background,
         child: ListView.builder(
           key: const ValueKey<String>('reader_content'),
           controller: scrollController,
@@ -70,9 +70,9 @@ class TextDocumentView extends StatelessWidget {
           // viewport; search owns its separate input/focus lifecycle.
           keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
           padding: EdgeInsets.fromLTRB(
-            24,
+            AppSpacing.xl,
             MediaQuery.viewPaddingOf(context).top + 104,
-            24,
+            AppSpacing.xl,
             MediaQuery.viewPaddingOf(context).bottom + 184,
           ),
           itemCount: content.chunks.length,
@@ -131,9 +131,7 @@ class _PlainTextChunk extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const baseStyle = TextStyle(
-      fontFamily: 'Inter',
-      color: FolioColors.textPrimary,
+    final baseStyle = AppTextStyles.body(context).copyWith(
       fontSize: 17,
       height: 1.62,
       fontWeight: FontWeight.w400,
@@ -181,12 +179,10 @@ List<InlineSpan> _highlightedSpans(
       TextSpan(
         text: chunk.text.substring(start, end),
         style: baseStyle.copyWith(
-          color: active
-              ? FolioColors.activeSearchText
-              : FolioColors.textPrimary,
+          color: active ? appColors.activeSearchText : appColors.textPrimary,
           backgroundColor: active
-              ? FolioColors.activeSearchMatch
-              : FolioColors.searchMatch,
+              ? appColors.activeSearchMatch
+              : appColors.searchMatch,
           fontWeight: active ? FontWeight.w600 : FontWeight.w400,
         ),
       ),
@@ -294,15 +290,13 @@ class _SearchHitBuilder extends MarkdownElementBuilder {
     return DecoratedBox(
       key: active ? targetKey : null,
       decoration: BoxDecoration(
-        color: active ? FolioColors.activeSearchMatch : FolioColors.searchMatch,
-        borderRadius: BorderRadius.circular(5),
+        color: active ? appColors.activeSearchMatch : appColors.searchMatch,
+        borderRadius: AppRadius.xsRadius,
       ),
       child: Text(
         element.textContent,
         style: (parentStyle ?? preferredStyle)?.copyWith(
-          color: active
-              ? FolioColors.activeSearchText
-              : FolioColors.textPrimary,
+          color: active ? appColors.activeSearchText : appColors.textPrimary,
           fontWeight: active ? FontWeight.w600 : null,
         ),
       ),
@@ -313,7 +307,7 @@ class _SearchHitBuilder extends MarkdownElementBuilder {
 MarkdownStyleSheet _createMarkdownStyleSheet() {
   const body = TextStyle(
     fontFamily: 'Inter',
-    color: FolioColors.textPrimary,
+    color: Color(0xFFF4F3EF),
     fontSize: 17,
     height: 1.58,
     fontWeight: FontWeight.w400,
@@ -321,7 +315,7 @@ MarkdownStyleSheet _createMarkdownStyleSheet() {
   );
   const heading = TextStyle(
     fontFamily: 'Inter',
-    color: FolioColors.textPrimary,
+    color: Color(0xFFF4F3EF),
     fontWeight: FontWeight.w600,
     height: 1.18,
     letterSpacing: -0.4,
@@ -331,7 +325,7 @@ MarkdownStyleSheet _createMarkdownStyleSheet() {
     a: body.copyWith(
       color: const Color(0xFFD8D6CF),
       decoration: TextDecoration.underline,
-      decorationColor: FolioColors.textTertiary,
+      decorationColor: const Color(0xFF6F706D),
     ),
     h1: heading.copyWith(fontSize: 30),
     h2: heading.copyWith(fontSize: 25),
@@ -348,7 +342,7 @@ MarkdownStyleSheet _createMarkdownStyleSheet() {
       color: const Color(0xFFE3E0D7),
       backgroundColor: const Color(0x14FFFFFF),
     ),
-    blockquote: body.copyWith(color: FolioColors.textSecondary),
+    blockquote: body.copyWith(color: const Color(0xFFA7A6A1)),
     blockquotePadding: const EdgeInsets.fromLTRB(16, 8, 14, 8),
     blockquoteDecoration: const BoxDecoration(
       color: Color(0x0AFFFFFF),
@@ -357,10 +351,10 @@ MarkdownStyleSheet _createMarkdownStyleSheet() {
     codeblockPadding: const EdgeInsets.all(14),
     codeblockDecoration: BoxDecoration(
       color: const Color(0xA3131518),
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: AppRadius.mdRadius,
       border: Border.all(color: const Color(0x18FFFFFF), width: 0.8),
     ),
-    listBullet: body.copyWith(color: FolioColors.textSecondary),
+    listBullet: body.copyWith(color: const Color(0xFFA7A6A1)),
     listIndent: 25,
     blockSpacing: 13,
     tableHead: body.copyWith(fontWeight: FontWeight.w600),
@@ -385,17 +379,17 @@ class _BlockedImage extends StatelessWidget {
       label: label?.isNotEmpty == true ? label : 'Blocked document image',
       child: Container(
         constraints: const BoxConstraints(minHeight: 72),
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
           color: const Color(0x0AFFFFFF),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: AppRadius.mdRadius,
           border: Border.all(color: const Color(0x18FFFFFF), width: 0.8),
         ),
         alignment: Alignment.center,
         child: Text(
           label?.isNotEmpty == true ? label! : 'External image blocked',
           textAlign: TextAlign.center,
-          style: FolioText.metadata,
+          style: AppTextStyles.metadata(context),
         ),
       ),
     );
@@ -407,26 +401,21 @@ class _EmptyDocument extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Center(
+    return Center(
       child: Padding(
-        padding: EdgeInsets.symmetric(horizontal: 32),
+        padding: EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Text(
               'Empty document',
-              style: TextStyle(
-                fontFamily: 'Inter',
-                color: FolioColors.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-              ),
+              style: AppTextStyles.subheading(context),
             ),
-            SizedBox(height: 7),
+            SizedBox(height: AppSpacing.xs),
             Text(
               'There is no text to display.',
               textAlign: TextAlign.center,
-              style: FolioText.metadata,
+              style: AppTextStyles.metadata(context),
             ),
           ],
         ),

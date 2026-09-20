@@ -49,21 +49,21 @@ class _DocumentRowState extends State<DocumentRow> {
           scale: _pressed && !reducedMotion ? 0.986 : 1,
           duration: reducedMotion
               ? Duration.zero
-              : const Duration(milliseconds: 120),
+              : AppDurations.fastest,
           curve: Curves.easeOutCubic,
           alignment: Alignment.center,
           child: AnimatedContainer(
             duration: reducedMotion
                 ? Duration.zero
-                : const Duration(milliseconds: 120),
+                : AppDurations.fastest,
             color: _pressed ? const Color(0x0FFFFFFF) : const Color(0x00000000),
-            padding: const EdgeInsets.fromLTRB(20, 9, 20, 9),
+            padding: AppSpacing.documentRowPadding,
             child: SizedBox(
               height: 56,
               child: Row(
                 children: <Widget>[
                   _FormatGlyph(format: document.format),
-                  const SizedBox(width: 14),
+                  SizedBox(width: AppSpacing.md),
                   Expanded(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -73,24 +73,24 @@ class _DocumentRowState extends State<DocumentRow> {
                           document.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: FolioText.filename,
+                          style: AppTextStyles.filename(context),
                         ),
-                        const SizedBox(height: 5),
+                        SizedBox(height: AppSpacing.xs),
                         Text(
                           formatFileSize(document.sizeBytes),
-                          style: FolioText.metadata,
+                          style: AppTextStyles.metadata(context),
                         ),
                       ],
                     ),
                   ),
                   if (!document.isAvailable)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 12),
+                    Padding(
+                      padding: EdgeInsets.only(left: AppSpacing.md),
                       child: Text(
                         'Unavailable',
                         style: TextStyle(
                           fontFamily: 'Inter',
-                          color: FolioColors.textTertiary,
+                          color: appColors.textTertiary,
                           fontSize: 11,
                         ),
                       ),
@@ -117,7 +117,7 @@ class _FormatGlyph extends StatelessWidget {
       height: 48,
       decoration: BoxDecoration(
         color: const Color(0x0BFFFFFF),
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: AppRadius.controlRadius,
         border: Border.all(color: const Color(0x1FFFFFFF), width: 0.8),
       ),
       alignment: Alignment.center,
@@ -127,14 +127,14 @@ class _FormatGlyph extends StatelessWidget {
               width: 24,
               height: 24,
               colorFilter: ColorFilter.mode(
-                FolioColors.textPrimary.withValues(alpha: 0.88),
+                appColors.textPrimary.withValues(alpha: 0.88),
                 BlendMode.srcIn,
               ),
             )
           : Icon(
               format.icon,
               size: 24,
-              color: FolioColors.textPrimary.withValues(alpha: 0.88),
+              color: appColors.textPrimary.withValues(alpha: 0.88),
             ),
     );
   }

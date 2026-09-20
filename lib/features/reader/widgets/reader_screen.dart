@@ -112,7 +112,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     } else if (widget.deferInitialLoad) {
       // Matches the OpenContainer morph so document I/O never competes with
       // the transition (the primed path skips this entirely).
-      _initialLoadDelay = Timer(const Duration(milliseconds: 340), () {
+      _initialLoadDelay = Timer(AppDurations.medium, () {
         if (mounted) {
           unawaited(_renderer.open());
         }
@@ -222,8 +222,8 @@ class _ReaderScreenState extends State<ReaderScreen>
           chunkIndex,
           preferPosition: AutoScrollPosition.begin,
           duration: reducedMotion
-              ? const Duration(milliseconds: 1)
-              : const Duration(milliseconds: 220),
+              ? Duration.zero
+              : AppDurations.fast,
         );
       } catch (_) {
         return;
@@ -292,7 +292,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     try {
       await _scrollController.animateTo(
         targetOffset,
-        duration: const Duration(milliseconds: 180),
+        duration: AppDurations.fast,
         curve: Curves.easeOutCubic,
       );
     } catch (_) {
@@ -308,7 +308,7 @@ class _ReaderScreenState extends State<ReaderScreen>
       return;
     }
     _searchDebounce = Timer(
-      const Duration(milliseconds: 160),
+      AppDurations.fast,
       () => unawaited(_renderer.search(query)),
     );
   }
@@ -465,7 +465,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     final started = _contentPointerStarted;
     final isTap = !_contentPointerMoved && !_textSelectionActive &&
         started != null &&
-        event.timeStamp - started < const Duration(milliseconds: 450);
+        event.timeStamp - started < AppDurations.medium;
     _clearContentPointer();
     if (isTap) {
       _handleContentTap();
@@ -523,7 +523,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     final reducedMotion = media.disableAnimations;
     final navigatorFadeDuration = reducedMotion
         ? Duration.zero
-        : const Duration(milliseconds: 150);
+        : AppDurations.fastest;
     return PopScope<void>(
       canPop: !_menuOpen && !_infoOpen,
       onPopInvokedWithResult: (didPop, result) {
@@ -533,7 +533,7 @@ class _ReaderScreenState extends State<ReaderScreen>
       },
       child: ColoredBox(
         key: const ValueKey<String>('reader_surface'),
-        color: FolioColors.background,
+        color: appColors.background,
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
@@ -934,13 +934,21 @@ class _OfficeStagedViewState extends State<_OfficeStagedView> {
 /// Horizontal padding inside the reader title pill (18pt each side).
 const double _titlePadding = 36;
 
+const TextStyle _titleMeasureStyle = TextStyle(
+  fontFamily: 'Inter',
+  color: Color(0xFFF4F3EF),
+  fontSize: 14,
+  fontWeight: FontWeight.w500,
+  letterSpacing: -0.1,
+);
+
 double _measureTitleWidth(
   String text,
   TextDirection direction,
   TextScaler scaler,
 ) {
   final painter = TextPainter(
-    text: TextSpan(text: text, style: _TopChromeContent._titleStyle),
+    text: TextSpan(text: text, style: _titleMeasureStyle),
     maxLines: 1,
     textDirection: direction,
     textScaler: scaler,
@@ -1012,13 +1020,11 @@ class _TopChromeContent extends StatelessWidget {
   final DocumentEntry document;
   final VoidCallback onBack;
 
-  static const TextStyle _titleStyle = TextStyle(
-    fontFamily: 'Inter',
-    color: FolioColors.textPrimary,
-    fontSize: 14,
-    fontWeight: FontWeight.w500,
-    letterSpacing: -0.1,
-  );
+  static TextStyle _titleStyle(BuildContext context) => AppTextStyles.bodyStrong(context).copyWith(
+        fontSize: 14,
+        fontWeight: FontWeight.w500,
+        letterSpacing: -0.1,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -1083,7 +1089,7 @@ class _TopChromeContent extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
-                        style: _titleStyle,
+                        style: _titleStyle(context),
                       ),
                     ),
                   ),
@@ -1165,13 +1171,7 @@ class _ProgressPill extends StatelessWidget {
       child: Center(
         child: AdaptiveGlassText(
           label,
-          style: const TextStyle(
-            fontFamily: 'Inter',
-            color: FolioColors.textSecondary,
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
-          ),
+          style: AppTextStyles.smallDim(context),
         ),
       ),
     );
@@ -1183,12 +1183,12 @@ class _SearchNavigator extends StatelessWidget {
 
   final DocumentRenderer renderer;
 
-  static const TextStyle _labelStyle = TextStyle(
-    fontFamily: 'Inter',
-    color: FolioColors.textPrimary,
-    fontSize: 12.5,
-    fontWeight: FontWeight.w500,
-  );
+  static TextStyle _labelStyle(BuildContext context) => TextStyle(
+        fontFamily: 'Inter',
+        color: appColors.textPrimary,
+        fontSize: 12.5,
+        fontWeight: FontWeight.w500,
+      );
   static const double _height = 46;
   static const double _leftPadding = 15;
   static const double _rightPadding = 6;
@@ -1210,7 +1210,7 @@ class _SearchNavigator extends StatelessWidget {
         ? 'No matches'
         : '${currentRenderer.activeHitIndex + 1} of ${currentRenderer.hitCount}';
     final textPainter = TextPainter(
-      text: TextSpan(text: label, style: _labelStyle),
+      text: TextSpan(text: label, style: _labelStyle(context)),
       textDirection: Directionality.of(context),
       textScaler: MediaQuery.textScalerOf(context),
     )..layout();
@@ -1241,7 +1241,7 @@ class _SearchNavigator extends StatelessWidget {
               AdaptiveGlassText(
                 key: const ValueKey<String>('reader_search_count'),
                 label,
-                style: _labelStyle,
+                style: _labelStyle(context),
               ),
               const SizedBox(width: _gap),
               _SearchStepButton(
@@ -1323,17 +1323,17 @@ class _ReaderMenuContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: AppSpacing.settingsRowPadding,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
           _MenuAction(label: 'File info', onTap: onFileInfo),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
             child: SizedBox(
               height: 1,
               child: AdaptiveGlassDecoration(
-                child: ColoredBox(color: FolioColors.separator),
+                child: ColoredBox(color: appColors.separator),
               ),
             ),
           ),
@@ -1363,15 +1363,10 @@ class _MenuAction extends StatelessWidget {
           child: Align(
             alignment: Alignment.centerLeft,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 17),
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
               child: AdaptiveGlassText(
                 label,
-                style: const TextStyle(
-                  fontFamily: 'Inter',
-                  color: FolioColors.textPrimary,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                ),
+                style: AppTextStyles.bodyStrong(context),
               ),
             ),
           ),
@@ -1419,28 +1414,27 @@ class _ReaderStatus extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(34, 70, 34, 100),
+        padding: EdgeInsets.fromLTRB(
+          AppSpacing.xxxxl,
+          AppSpacing.xxxxxl + AppSpacing.xl,
+          AppSpacing.xxxxl,
+          AppSpacing.xxxxxl + AppSpacing.xl + AppSpacing.lg,
+        ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
             Text(
               title,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontFamily: 'Inter',
-                color: FolioColors.textPrimary,
-                fontSize: 20,
-                fontWeight: FontWeight.w600,
-                letterSpacing: -0.25,
-              ),
+              style: AppTextStyles.subheading(context),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: AppSpacing.md),
             Text(
               message,
               textAlign: TextAlign.center,
-              style: FolioText.metadata,
+              style: AppTextStyles.metadata(context),
             ),
-            if (action != null) ...<Widget>[const SizedBox(height: 2), action!],
+            if (action != null) ...<Widget>[SizedBox(height: AppSpacing.xs), action!],
           ],
         ),
       ),
@@ -1453,15 +1447,15 @@ class _ReaderBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const DecoratedBox(
+    return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: <Color>[
-            Color(0xFF121315),
-            FolioColors.background,
-            Color(0xFF08090A),
+            const Color(0xFF121315),
+            appColors.background,
+            const Color(0xFF08090A),
           ],
           stops: <double>[0, 0.34, 1],
         ),
