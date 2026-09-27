@@ -17,6 +17,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../../../shared/selection/folio_selection_toolbar.dart';
+import '../../../../shared/selection/selection_visuals.dart';
 import '../data/text_document.dart';
 import '../logic/markdown_selection_text.dart';
 
@@ -41,12 +42,29 @@ class TextDocumentSelection extends StatefulWidget {
 
 class _TextDocumentSelectionState extends State<TextDocumentSelection> {
   final _regionKey = GlobalKey<SelectableRegionState>();
+  final _containerKey = GlobalKey();
+  final _visualKey = GlobalKey();
   final _focusNode = FocusNode(debugLabel: 'Document selection');
   final Set<int> _touchPointers = <int>{};
   final _delegate = _DocumentSelectionDelegate();
+  final _visualRepaint = _SelectionVisualNotifier();
   bool _copying = false;
   bool _hasSelection = false;
   String? _cachedMarkdownText;
+
+  @override
+  void initState() {
+    super.initState();
+    _delegate.addListener(_refreshVisual);
+    _focusNode.addListener(_focusChanged);
+  }
+
+  void _focusChanged() {
+    if (_focusNode.hasFocus) return;
+    _touchPointers.clear();
+    _regionKey.currentState?.clearSelection();
+    _refreshVisual();
+  }
 
   @override
   void didUpdateWidget(TextDocumentSelection oldWidget) {
@@ -55,6 +73,7 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection> {
       _cachedMarkdownText = null;
       _touchPointers.clear();
       _delegate.invalidate();
+      _refreshVisual();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _regionKey.currentState?.clearSelection();
@@ -89,6 +108,54 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection> {
     }
     _hasSelection = active;
     widget.onSelectionChanged?.call(active);
+    _refreshVisual();
+  }
+
+  void _refreshVisual() => _visualRepaint.refresh();
+
+  List<Rect> _visibleHighlightRects() {
+    final paintBox = _visualKey.currentContext?.findRenderObject();
+    final containerBox = _containerKey.currentContext?.findRenderObject();
+    if (paintBox is! RenderBox ||
+        containerBox is! RenderBox ||
+        !paintBox.hasSize ||
+        !containerBox.hasSize) {
+      return const <Rect>[];
+    }
+    final viewport = Offset.zero & paintBox.size;
+    final next = <Rect>[];
+    if (_delegate.selectsDocument) {
+      void collect(RenderObject object) {
+        if (object is RenderParagraph && object.hasSize) {
+          final transform = object.getTransformTo(paintBox);
+          final bounds = MatrixUtils.transformRect(
+            transform,
+            Offset.zero & object.size,
+          );
+          if (bounds.overlaps(viewport)) {
+            final length = object.text.toPlainText().length;
+            if (length > 0) {
+              for (final box in object.getBoxesForSelection(
+                TextSelection(baseOffset: 0, extentOffset: length),
+              )) {
+                final rect = MatrixUtils.transformRect(transform, box.toRect());
+                if (rect.overlaps(viewport) && rect.isFinite) next.add(rect);
+              }
+            }
+          }
+        }
+        object.visitChildren(collect);
+      }
+
+      collect(containerBox);
+    } else {
+      final transform = containerBox.getTransformTo(paintBox);
+      for (final rect in _delegate.value.selectionRects) {
+        final visible = MatrixUtils.transformRect(transform, rect);
+        if (visible.overlaps(viewport) && visible.isFinite) next.add(visible);
+      }
+    }
+    return next;
   }
 
   Future<void> _copy(SelectableRegionState region) async {
@@ -112,9 +179,11 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection> {
       if (document.isMarkdown) {
         // Rendering an entire long Markdown file synchronously on a tap would
         // trade the old selection bug for a UI stall. Parse off-thread instead.
-        text = _cachedMarkdownText ?? (text.length > 65536
-            ? await compute(markdownSelectionText, text)
-            : markdownSelectionText(text));
+        text =
+            _cachedMarkdownText ??
+            (text.length > 65536
+                ? await compute(markdownSelectionText, text)
+                : markdownSelectionText(text));
         if (mounted && identical(widget.document, document)) {
           _cachedMarkdownText = text;
         }
@@ -125,7 +194,8 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection> {
         return;
       }
       await Clipboard.setData(ClipboardData(text: text));
-      if (mounted && identical(widget.document, document) &&
+      if (mounted &&
+          identical(widget.document, document) &&
           revision == _delegate.revision) {
         region.hideToolbar();
         _touchPointers.clear();
@@ -140,8 +210,33 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection> {
   }
 
   Widget _menu(BuildContext context, SelectableRegionState region) {
+    final paintBox = _visualKey.currentContext?.findRenderObject();
+    final viewport = paintBox is RenderBox
+        ? MatrixUtils.transformRect(
+            paintBox.getTransformTo(null),
+            Offset.zero & paintBox.size,
+          )
+        : Offset.zero & MediaQuery.sizeOf(context);
+    final visibleRects = paintBox is RenderBox
+        ? _visibleHighlightRects().map(
+            (rect) =>
+                MatrixUtils.transformRect(paintBox.getTransformTo(null), rect),
+          )
+        : const <Rect>[];
+    TextSelectionToolbarAnchors? original;
+    try {
+      // Flutter's start/end glyph heights can be absent after both handles
+      // have scrolled out of a lazily built viewport.
+      original = region.contextMenuAnchors;
+    } catch (_) {
+      original = null;
+    }
     return FolioSelectionToolbar(
-      anchors: region.contextMenuAnchors,
+      anchors: folioVisibleSelectionAnchors(
+        original: original,
+        viewport: viewport,
+        visibleRects: visibleRects,
+      ),
       buttonItems: <ContextMenuButtonItem>[
         ContextMenuButtonItem(
           type: ContextMenuButtonType.copy,
@@ -150,7 +245,10 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection> {
         if (!_delegate.selectsDocument)
           ContextMenuButtonItem(
             type: ContextMenuButtonType.selectAll,
-            onPressed: () => region.selectAll(SelectionChangedCause.toolbar),
+            onPressed: () {
+              region.selectAll(SelectionChangedCause.toolbar);
+              _refreshVisual();
+            },
           ),
       ],
     );
@@ -158,7 +256,10 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection> {
 
   @override
   void dispose() {
+    _focusNode.removeListener(_focusChanged);
+    _delegate.removeListener(_refreshVisual);
     _delegate.dispose();
+    _visualRepaint.dispose();
     _focusNode.dispose();
     super.dispose();
   }
@@ -187,12 +288,12 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection> {
         preserveGestureSelection: () =>
             _touchPointers.isNotEmpty && _focusNode.hasFocus,
         selectionControls: switch (Theme.of(context).platform) {
-          TargetPlatform.android || TargetPlatform.fuchsia =>
-            materialTextSelectionHandleControls,
+          TargetPlatform.android ||
+          TargetPlatform.fuchsia => materialTextSelectionHandleControls,
           TargetPlatform.iOS => cupertinoTextSelectionHandleControls,
           TargetPlatform.macOS => cupertinoDesktopTextSelectionHandleControls,
-          TargetPlatform.linux || TargetPlatform.windows =>
-            desktopTextSelectionHandleControls,
+          TargetPlatform.linux ||
+          TargetPlatform.windows => desktopTextSelectionHandleControls,
         },
         magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
         focusNode: _focusNode,
@@ -204,13 +305,41 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection> {
           onPointerUp: _pointerFinished,
           onPointerCancel: _pointerFinished,
           child: SelectionContainer(
+            key: _containerKey,
             delegate: _delegate,
-            child: widget.child,
+            child: NotificationListener<ScrollNotification>(
+              onNotification: (_) {
+                _refreshVisual();
+                return false;
+              },
+              child: Stack(
+                key: _visualKey,
+                fit: StackFit.expand,
+                children: <Widget>[
+                  DefaultSelectionStyle.merge(
+                    selectionColor: const Color(0x00000000),
+                    child: widget.child,
+                  ),
+                  IgnorePointer(
+                    child: CustomPaint(
+                      foregroundPainter: FolioSelectionHighlightPainter(
+                        _visibleHighlightRects,
+                        repaint: _visualRepaint,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
     );
   }
+}
+
+class _SelectionVisualNotifier extends ChangeNotifier {
+  void refresh() => notifyListeners();
 }
 
 /// Uses Flutter's selection engine, with one targeted cancellation policy.
@@ -231,7 +360,8 @@ class _ScrollPreservingSelectionRegion extends SelectableRegion {
   final bool Function() preserveGestureSelection;
 
   @override
-  SelectableRegionState createState() => _ScrollPreservingSelectionRegionState();
+  SelectableRegionState createState() =>
+      _ScrollPreservingSelectionRegionState();
 }
 
 class _ScrollPreservingSelectionRegionState extends SelectableRegionState {

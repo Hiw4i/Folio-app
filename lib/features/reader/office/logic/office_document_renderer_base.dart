@@ -206,6 +206,24 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     }
   }
 
+  double get pageFraction => positionCount <= 1
+      ? 0
+      : ((currentPosition - 1) / (positionCount - 1)).clamp(0.0, 1.0);
+
+  /// Super-fast scrub seek for the reader scrubber: jumps straight to the
+  /// page closest to [fraction] without animation (same instant jump as
+  /// the text/pdf scrubbers, no smooth-scroll acceleration).
+  Future<void> seekToFraction(double fraction) {
+    final view = _view;
+    if (_disposed || !_viewReady || view == null || positionCount <= 1) {
+      return Future<void>.value();
+    }
+    final index = (fraction.clamp(0.0, 1.0) * (positionCount - 1))
+        .round()
+        .clamp(0, positionCount - 1);
+    return _runViewCommand(view, () => view.goToPositionInstant(index));
+  }
+
   Future<void> _runViewCommand(
     OfficeViewCommands view,
     Future<void> Function() command,

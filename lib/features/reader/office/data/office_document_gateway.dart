@@ -135,4 +135,9 @@ abstract interface class OfficeViewCommands {
   Future<void> showNextHit();
   Future<void> showPreviousHit();
   Future<void> goToPosition(int zeroBasedIndex);
+
+  /// Instant (non-animated) jump used by the scrubber: unlike
+  /// [goToPosition], it never runs the smooth `scrollIntoView` animation,
+  /// so dragging the scrub thumb jumps as fast as in other formats.
+  Future<void> goToPositionInstant(int zeroBasedIndex);
 }

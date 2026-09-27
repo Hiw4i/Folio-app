@@ -49,8 +49,10 @@ class TextDocumentView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final content = renderer.content!;
-    if (content.chunks.isEmpty) {
+    // `close()` may clear content while this view is still mounted (e.g. a
+    // fast document switch). Fall back to the empty state instead of throwing.
+    final content = renderer.content;
+    if (content == null || content.chunks.isEmpty) {
       return const _EmptyDocument();
     }
     final activeChunk = renderer.activeHit?.chunkIndex;
@@ -407,10 +409,7 @@ class _EmptyDocument extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Text(
-              'Empty document',
-              style: AppTextStyles.subheading(context),
-            ),
+            Text('Empty document', style: AppTextStyles.subheading(context)),
             SizedBox(height: AppSpacing.xs),
             Text(
               'There is no text to display.',

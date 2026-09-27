@@ -8,7 +8,14 @@ Future<void> writeFileAtomically(File destination, String contents) async {
   final temporary = File('${destination.path}.tmp');
   try {
     await temporary.writeAsString(contents, flush: true);
-    await temporary.rename(destination.path);
+    try {
+      await temporary.rename(destination.path);
+    } on FileSystemException {
+      // Windows cannot rename over an existing file. Remove the last good
+      // file only after the replacement is fully flushed to the temp file.
+      await destination.delete();
+      await temporary.rename(destination.path);
+    }
   } finally {
     try {
       if (await temporary.exists()) {

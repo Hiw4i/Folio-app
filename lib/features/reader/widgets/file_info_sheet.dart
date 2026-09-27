@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../../../shared/theme/folio_theme.dart';
+import '../../../shared/utils/file_format.dart';
 import '../../../shared/widgets/folio_bottom_sheet.dart';
 import '../../../shared/widgets/folio_sheet_content.dart';
 import '../../library/data/document_entry.dart';
@@ -47,7 +48,7 @@ class FileInfoSheet extends StatelessWidget {
               const FolioSheetDivider(),
               _FileInfoRow(
                 label: 'Size',
-                value: _formatFileSize(document.sizeBytes),
+                value: formatFileSize(document.sizeBytes),
               ),
             ],
           ),
@@ -61,12 +62,12 @@ class FileInfoSheet extends StatelessWidget {
             children: <Widget>[
               _FileInfoRow(
                 label: 'Created',
-                value: _formatDate(document.effectiveCreatedAt),
+                value: formatDocumentDate(document.effectiveCreatedAt),
               ),
               const FolioSheetDivider(),
               _FileInfoRow(
                 label: 'Modified',
-                value: _formatDate(document.modifiedAt),
+                value: formatDocumentDate(document.modifiedAt),
               ),
             ],
           ),
@@ -125,33 +126,4 @@ class _FileInfoRow extends StatelessWidget {
       ),
     );
   }
-}
-
-String _formatFileSize(int bytes) {
-  if (bytes < 1024) {
-    return '$bytes B';
-  }
-  if (bytes < 1024 * 1024) {
-    return '${(bytes / 1024).toStringAsFixed(bytes < 10240 ? 1 : 0)} KB';
-  }
-  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-}
-
-String _formatDate(DateTime date) {
-  const months = <String>[
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-  final local = date.toLocal();
-  return '${months[local.month - 1]} ${local.day}, ${local.year}';
 }

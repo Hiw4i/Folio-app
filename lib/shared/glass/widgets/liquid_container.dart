@@ -145,7 +145,7 @@ class LiquidGlass extends StatelessWidget {
         return LiquidCase(
           borderRadius: borderRadius ?? 24,
           padding: padding,
-          fill: fill ?? const Color.fromARGB(147, 255, 0, 0),
+          fill: fill ?? const Color(0xB31A1B1E),
           child: child!,
         );
       case _LiquidKind.morph:

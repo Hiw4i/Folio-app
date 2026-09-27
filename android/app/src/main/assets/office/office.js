@@ -31,6 +31,7 @@
   });
   const selection = window.FolioReaderSelection.create({
     viewport, content: documentRoot, post, cancelMotion: () => motion.reset(),
+    visiblePages: () => state.pages,
   });
   window.FolioSelection = selection;
 
@@ -89,6 +90,40 @@
     }
   }
 
+  function zoomed() {
+    return (window.visualViewport?.scale || 1) > 1.01;
+  }
+
+  // Pure range math for the zoomed-slide clamp below; covered by browser tests.
+  function zoomedSlideRange(position, clientWidth, scale) {
+    const lo = position * clientWidth;
+    return { lo, hi: lo + clientWidth * (1 - 1 / scale) };
+  }
+
+  // Zoomed PPTX never leaves the current slide: no finger flips and no
+  // snap/fling animations to neighbours. Pinch-zoom itself is native and
+  // untouched; while the scale is changing (active pinch) scroll is left
+  // alone so the clamp never fights the browser's pinch anchor.
+  function clampZoomedSlide() {
+    if (format !== 'pptx' || state.disposed || !zoomed()) {
+      clampZoomedSlide.lastScale = window.visualViewport?.scale || 1;
+      return;
+    }
+    const scale = window.visualViewport.scale || 1;
+    if (Math.abs(scale - clampZoomedSlide.lastScale) > 0.001) {
+      clampZoomedSlide.lastScale = scale;
+      return;
+    }
+    const w = viewport.clientWidth;
+    if (!(w > 0)) return;
+    const { lo, hi } = zoomedSlideRange(state.position, w, scale);
+    const bounded = Math.min(hi, Math.max(lo, viewport.scrollLeft));
+    if (Math.abs(bounded - viewport.scrollLeft) > 0.5) {
+      viewport.scrollTo({ left: bounded, behavior: 'instant' });
+    }
+  }
+  clampZoomedSlide.lastScale = 1;
+
   function onScroll() {
     if (state.scrollFrame || state.disposed) return;
     state.scrollFrame = requestAnimationFrame(() => {
@@ -103,6 +138,8 @@
       // Keep position updates, but avoid a bridge message on every swipe frame.
       if (format === 'docx' && !selection.isActive() && !motion.isAnimating
           && Math.abs(delta) > 0.5) post('scroll', { delta });
+      // Clamp before publishing so a zoomed pan can never report a neighbour.
+      clampZoomedSlide();
       publishPosition(false);
     });
   }
@@ -302,13 +339,15 @@
     });
     const hit = state.hits[state.activeHit];
     if (!hit) return;
+    // PowerPoint: переход между слайдами всегда мгновенный, без анимации.
+    const instant = format === 'pptx' || !smooth;
     if (format === 'pptx') {
       const frame = hit.closest('.folio-slide-frame');
-      frame?.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant', inline: 'center' });
+      frame?.scrollIntoView({ behavior: 'instant', inline: 'center' });
     } else {
-      hit.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant', block: 'center' });
+      hit.scrollIntoView({ behavior: instant ? 'instant' : 'smooth', block: 'center' });
     }
-    window.setTimeout(() => publishPosition(true), smooth ? 260 : 0);
+    window.setTimeout(() => publishPosition(true), instant ? 0 : 260);
   }
 
   function stepHit(delta) {
@@ -327,8 +366,10 @@
     const pages = pageElements();
     const target = pages[Math.max(0, Math.min(Math.trunc(Number(index) || 0), pages.length - 1))];
     if (!target) return;
+    // PowerPoint: смена слайдов всегда мгновенная, без анимации перелистывания.
+    const instant = format === 'pptx' || !smooth;
     target.scrollIntoView({
-      behavior: smooth ? 'smooth' : 'instant',
+      behavior: instant ? 'instant' : 'smooth',
       block: format === 'docx' ? 'start' : 'nearest',
       inline: format === 'pptx' ? 'center' : 'nearest',
     });
@@ -339,6 +380,8 @@
     nextHit: () => stepHit(1),
     previousHit: () => stepHit(-1),
     goToPosition,
+    // Чистая математика клампа увеличенного слайда (покрыта брауз. тестами).
+    zoomedSlideRange,
   };
 
   document.addEventListener('click', (event) => {
@@ -352,6 +395,9 @@
   viewport.addEventListener('scroll', onScroll, { passive: true });
   const activePointers = new Set();
   const tapSlop = 10;
+  // Свайп в PPTX — та же дискретная команда, что и тап: порог выше tapSlop,
+  // чтобы обычное дрожание пальца при тапе не листало слайды.
+  const swipeSlop = 24;
   const tapTimeout = 500;
   const isInteractive = (target) => target instanceof Element
     && !!target.closest('a, button, input, textarea, select, [contenteditable="true"]');
@@ -359,13 +405,24 @@
   viewport.addEventListener('pointerdown', (event) => {
     if (!state.ready || state.disposed) return;
     activePointers.add(event.pointerId);
-    if (activePointers.size !== 1 || !event.isPrimary || event.button !== 0) {
-      if (state.pointer) state.pointer.moved = true;
+    // Проверка кнопки — только для мыши: тач/перо в касании сообщают
+    // button 0 и всегда должны вооружать кандидата на тап/свайп.
+    if (activePointers.size !== 1 || !event.isPrimary
+        || (event.pointerType === 'mouse' && event.button !== 0)) {
+      // Второй палец отменяет кандидата на тап/свайп: навигация жестами
+      // работает только строго одним пальцем. Щипок (zoom) при этом живёт
+      // своей жизнью на нативном WebView-зуме и навигацию не вызывает.
+      if (state.pointer) {
+        state.pointer.moved = true;
+        state.pointer.multitouch = true;
+      }
       return;
     }
     state.pointer = {
       id: event.pointerId, x: event.clientX, y: event.clientY,
       startedAt: event.timeStamp, moved: false,
+      multitouch: false,
+      scale: window.visualViewport?.scale || 1,
       interactive: isInteractive(event.target),
       selectionActive: window.getSelection()?.isCollapsed === false,
       scroll: format === 'pptx' ? viewport.scrollLeft : viewport.scrollTop,
@@ -389,19 +446,38 @@
     const pointer = state.pointer;
     if (!pointer || pointer.id !== event.pointerId) return;
     state.pointer = null;
-    if (state.disposed || !state.ready || pointer.moved || activePointers.size
+    // Мультитач-жест или щипок (изменение масштаба за время касания)
+    // навигацию не вызывает: ни тап, ни свайп. Одиночный палец после
+    // чужого мультитача тоже молчит — кандидат создаётся только одним.
+    const scale = window.visualViewport?.scale || 1;
+    if (state.disposed || !state.ready || activePointers.size
         || pointer.interactive || pointer.selectionActive || isInteractive(event.target)
-        || event.timeStamp - pointer.startedAt > tapTimeout
-        || Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > tapSlop
+        || pointer.multitouch || Math.abs(scale - (pointer.scale || 1)) > 0.001
         || window.getSelection()?.isCollapsed === false) return;
     const bounds = viewport.getBoundingClientRect();
     const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
     if (x < 0 || x >= bounds.width || y < 0 || y >= bounds.height) return;
+    const dx = event.clientX - pointer.x, dy = event.clientY - pointer.y;
     if (format === 'pptx') {
+      // Свайп делает то же самое, что тап по краю, и тем же способом:
+      // никакой свободной прокрутки, влево — вперёд, вправо — назад.
+      // На увеличенном слайде палец панорамирует содержимое нативно,
+      // поэтому жесты навигации там не срабатывают.
+      if (!zoomed() && Math.abs(dx) > swipeSlop && Math.abs(dx) >= Math.abs(dy)) {
+        if (dx < 0) goToPosition(state.position + 1);
+        else goToPosition(state.position - 1);
+        return;
+      }
+      if (pointer.moved
+          || event.timeStamp - pointer.startedAt > tapTimeout
+          || Math.hypot(dx, dy) > tapSlop) return;
       if (x < viewport.clientWidth * 0.24) goToPosition(state.position - 1);
       else if (x > viewport.clientWidth * 0.76) goToPosition(state.position + 1);
       else post('tap');
     } else {
+      if (pointer.moved
+          || event.timeStamp - pointer.startedAt > tapTimeout
+          || Math.hypot(dx, dy) > tapSlop) return;
       post('tap');
     }
   }, { passive: true });

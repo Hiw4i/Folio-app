@@ -46,8 +46,88 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   int pageCount = 0;
   bool? searchableTextAvailable;
 
+  /// Smooth (sub-page) scroll position driven by the viewer's transform.
+  /// The reader scrubber listens to this instead of rebuilding on every
+  /// [notifyListeners], so fast flings move only the thin track/thumb.
+  final ValueNotifier<double> scrollFraction = ValueNotifier<double>(0);
+
   PdfDocumentRef? get documentRef => _documentRef;
   bool get sourceReady => _documentRef != null;
+
+  /// Page-based fallback fraction for labels/seek when the viewer matrix
+  /// is not available yet.
+  double get pageFraction => pageCount <= 1
+      ? 0
+      : ((currentPage - 1) / (pageCount - 1)).clamp(0.0, 1.0);
+
+  /// Super-fast scrub seek: jumps straight to the document offset without
+  /// any animation, so dragging the scrubber never waits for rasterization
+  /// of intermediate pages. Falls back to a page jump when the viewer
+  /// layout is not ready yet.
+  Future<void> seekToFraction(double fraction) async {
+    final controller = _viewerController;
+    if (_disposed || controller == null) {
+      return;
+    }
+    final target = fraction.clamp(0.0, 1.0);
+    try {
+      if (controller.isReady) {
+        final docHeight = controller.documentSize.height;
+        final visibleHeight = controller.visibleRect.height;
+        final maxScroll = docHeight - visibleHeight;
+        if (maxScroll.isFinite && maxScroll > 0) {
+          await controller.goToPosition(
+            documentOffset: Offset(0, target * maxScroll),
+            duration: Duration.zero,
+          );
+          return;
+        }
+      }
+    } catch (_) {
+      // A disposed viewer or a layout without dimensions: page fallback below.
+    }
+    if (pageCount > 1) {
+      final page = (1 + (target * (pageCount - 1)).round()).clamp(
+        1,
+        pageCount,
+      );
+      try {
+        await controller.goToPage(
+          pageNumber: page,
+          duration: Duration.zero,
+        );
+      } catch (_) {
+        // A disposed viewer can cancel the jump; the scrub thumb stays.
+      }
+    }
+  }
+
+  void _onViewerMatrix() {
+    final controller = _viewerController;
+    if (_disposed || controller == null) {
+      return;
+    }
+    try {
+      if (!controller.isReady) {
+        return;
+      }
+      final docHeight = controller.documentSize.height;
+      final visibleHeight = controller.visibleRect.height;
+      final maxScroll = docHeight - visibleHeight;
+      if (!maxScroll.isFinite || maxScroll <= 0) {
+        if (scrollFraction.value != 0) {
+          scrollFraction.value = 0;
+        }
+        return;
+      }
+      final next = (controller.visibleRect.top / maxScroll).clamp(0.0, 1.0);
+      if ((next - scrollFraction.value).abs() > 0.0005) {
+        scrollFraction.value = next;
+      }
+    } catch (_) {
+      // The viewer state can be torn down mid-fling; keep the last fraction.
+    }
+  }
 
   String get positionLabel =>
       pageCount <= 0 ? 'PDF' : '$currentPage / $pageCount';
@@ -78,6 +158,7 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     currentPage = 1;
     pageCount = 0;
     searchableTextAvailable = null;
+    scrollFraction.value = 0;
     query = '';
     _searchRevision += 1;
     _requestedHitIndex = null;
@@ -165,6 +246,7 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     }
     _detachViewer();
     _viewerController = controller;
+    _viewerController!.addListener(_onViewerMatrix);
     _textSearcher = PdfTextSearcher(controller)..addListener(_searchChanged);
     pageCount = openedDocument.pages.length;
     currentPage = pageCount > 0
@@ -436,6 +518,7 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   void _detachViewer() {
     _textProbeRevision += 1;
     _cancelPdfNavigation();
+    _viewerController?.removeListener(_onViewerMatrix);
     _viewerController = null;
     _textSearcher
       ?..removeListener(_searchChanged)
@@ -462,6 +545,7 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     _disposed = true;
     _generation += 1;
     _detachViewer();
+    scrollFraction.dispose();
     final source = _preparedSource;
     _preparedSource = null;
     if (source != null) {

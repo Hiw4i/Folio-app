@@ -121,7 +121,9 @@ void main() {
   ) async {
     await openReader(tester);
 
-    final selectionArea = find.byWidgetPredicate((widget) => widget is SelectableRegion).first;
+    final selectionArea = find
+        .byWidgetPredicate((widget) => widget is SelectableRegion)
+        .first;
     final selectionState = tester.state<SelectableRegionState>(selectionArea);
     selectionState.selectAll();
     await tester.pump();
@@ -221,7 +223,15 @@ void main() {
       find.byType(LiquidSearchControl),
     );
     expect(searchState.isExpanded, isTrue);
-    expect(find.text('0%'), findsOneWidget);
+    // Both the bottom-left indicator and the right-edge scrub pill show
+    // the live progress: scope to the bottom-left one.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('reader_progress_glass')),
+        matching: find.text('0%'),
+      ),
+      findsOneWidget,
+    );
     expect(FocusManager.instance.primaryFocus?.debugLabel, 'Search field');
 
     await tester.binding.handlePopRoute();
@@ -312,43 +322,53 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('rapid File info actions and Back cannot stack or pop the reader', (
-    tester,
-  ) async {
-    await openReader(tester);
-    await tester.tap(find.byKey(const ValueKey<String>('reader_menu_button')));
-    await tester.pumpAndSettle();
-    final action = tester.widget<GestureDetector>(
-      find.ancestor(
-        of: find.text('File info'),
-        matching: find.byType(GestureDetector),
-      ).first,
-    ).onTap!;
-    action();
-    action(); // Before the first opening frame.
-    await tester.pumpAndSettle();
-    expect(find.byType(FileInfoSheet), findsOneWidget);
+  testWidgets(
+    'rapid File info actions and Back cannot stack or pop the reader',
+    (tester) async {
+      await openReader(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('reader_menu_button')),
+      );
+      await tester.pumpAndSettle();
+      final action = tester
+          .widget<GestureDetector>(
+            find
+                .ancestor(
+                  of: find.text('File info'),
+                  matching: find.byType(GestureDetector),
+                )
+                .first,
+          )
+          .onTap!;
+      action();
+      action(); // Before the first opening frame.
+      await tester.pumpAndSettle();
+      expect(find.byType(FileInfoSheet), findsOneWidget);
 
-    await tester.binding.handlePopRoute();
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    action(); // The closing animation must still hold the modal guard.
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(find.byType(FileInfoSheet), findsNothing);
-    expect(
-      find.byKey(const ValueKey<String>('folio_sheet_backdrop')),
-      findsNothing,
-    );
-    expect(find.byKey(const ValueKey<String>('reader_surface')), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      action(); // The closing animation must still hold the modal guard.
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(FileInfoSheet), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('folio_sheet_backdrop')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('reader_surface')),
+        findsOneWidget,
+      );
 
-    await _openFileInfo(tester);
-    await tester.pumpAndSettle();
-    expect(find.byType(FileInfoSheet), findsOneWidget);
-    await tester.binding.handlePopRoute();
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-  });
+      await _openFileInfo(tester);
+      await tester.pumpAndSettle();
+      expect(find.byType(FileInfoSheet), findsOneWidget);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('File info releases search focus without losing the query', (
     tester,
@@ -369,7 +389,10 @@ void main() {
     );
     await _openFileInfo(tester);
     await tester.pumpAndSettle();
-    expect(FocusManager.instance.primaryFocus?.debugLabel, isNot('Search field'));
+    expect(
+      FocusManager.instance.primaryFocus?.debugLabel,
+      isNot('Search field'),
+    );
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
     expect(
@@ -377,12 +400,15 @@ void main() {
       same(search),
     );
     expect(
-      tester.widget<EditableText>(
-        find.descendant(
-          of: find.byKey(const ValueKey<String>('search_editable')),
-          matching: find.byType(EditableText),
-        ),
-      ).controller.text,
+      tester
+          .widget<EditableText>(
+            find.descendant(
+              of: find.byKey(const ValueKey<String>('search_editable')),
+              matching: find.byType(EditableText),
+            ),
+          )
+          .controller
+          .text,
       'quiet',
     );
     expect(find.text('1 of 1'), findsOneWidget);
@@ -652,7 +678,7 @@ TextSelection? _activeSelection(InlineSpan? root) {
     if (span case TextSpan(:final text, :final children, :final style)) {
       final start = offset;
       offset += text?.length ?? 0;
-      if (style?.backgroundColor == FolioColors.activeSearchMatch &&
+      if (style?.backgroundColor == appColors.activeSearchMatch &&
           offset > start) {
         result = TextSelection(baseOffset: start, extentOffset: offset);
       }

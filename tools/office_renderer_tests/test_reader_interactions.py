@@ -4,7 +4,9 @@ CDP dispatches genuine Chromium touch gestures (not just PointerEvent objects).
 Android ActionMode/Flutter composition still require device integration tests.
 """
 from __future__ import annotations
+import io
 import unittest
+from PIL import Image, ImageChops
 import test_renderers
 
 
@@ -58,6 +60,12 @@ class ReaderInteractionTests(unittest.TestCase):
         self.assertTrue(all(0 <= v['position'] <= 200 for v in values))
         self.assertLess(abs(values[-1]['position']),.001)
 
+    def test_pptx_zoomed_slide_range_math(self):
+        page=self.load('basic.pptx')
+        self.assertEqual(page.evaluate('FolioOffice.zoomedSlideRange(2,412,2)'),{'lo':824,'hi':1030})
+        self.assertEqual(page.evaluate('FolioOffice.zoomedSlideRange(0,412,1)'),{'lo':0,'hi':0})
+        self.assertEqual(page.evaluate('FolioOffice.zoomedSlideRange(1,400,4)'),{'lo':400,'hi':700})
+
     def test_docx_top_real_touch_bounces_and_returns(self):
         page=self.load('basic.docx');session=self.touch_session(page)
         self.clear_events(page)
@@ -85,23 +93,30 @@ class ReaderInteractionTests(unittest.TestCase):
         self.assertAlmostEqual(page.evaluate('document.getElementById("viewport").scrollTop'),end,delta=1)
         self.assert_no_chrome_events(page)
 
-    def test_pptx_first_edge_bounces_without_chrome_or_slide_change(self):
+    def test_pptx_first_edge_swipe_stays_without_chrome_or_slide_change(self):
         page=self.load('basic.pptx');session=self.touch_session(page);self.clear_events(page)
         self.touch(page,session,'touchStart',(80,450))
         for x in range(120,361,40): self.touch(page,session,'touchMove',(x,450))
-        self.assertGreater(self.transform(page,'x'),10)
-        self.touch(page,session,'touchEnd');page.wait_for_timeout(1550)
+        # No free swipe panning: the finger never drags the slide.
+        self.assertEqual(self.transform(page,'x'),0)
+        self.assertEqual(page.evaluate('document.getElementById("viewport").scrollLeft'),0)
+        # Release is a rightward swipe: the same discrete prev command as an
+        # edge tap, clamped on the first slide.
+        self.touch(page,session,'touchEnd');page.wait_for_timeout(200)
         self.assertAlmostEqual(self.transform(page,'x'),0,delta=.1)
         self.assertEqual(page.evaluate('document.getElementById("viewport").scrollLeft'),0)
         self.assert_no_chrome_events(page)
 
-    def test_pptx_last_edge_bounces_without_chrome_or_slide_change(self):
+    def test_pptx_last_edge_swipe_stays_without_chrome_or_slide_change(self):
         page=self.load('basic.pptx');session=self.touch_session(page)
         page.evaluate('FolioOffice.goToPosition(1,false)');page.wait_for_timeout(100);self.clear_events(page)
         self.touch(page,session,'touchStart',(350,450))
         for x in range(310,29,-40): self.touch(page,session,'touchMove',(x,450))
-        self.assertLess(self.transform(page,'x'),-10)
-        self.touch(page,session,'touchEnd');page.wait_for_timeout(1550)
+        # No free swipe panning: the finger never drags the slide.
+        self.assertEqual(self.transform(page,'x'),0)
+        # Release is a leftward swipe: the same discrete next command as an
+        # edge tap, clamped on the last slide.
+        self.touch(page,session,'touchEnd');page.wait_for_timeout(200)
         self.assertAlmostEqual(self.transform(page,'x'),0,delta=.1)
         self.assertAlmostEqual(page.evaluate('document.getElementById("viewport").scrollLeft'),412,delta=1)
         self.assert_no_chrome_events(page)
@@ -131,7 +146,8 @@ class ReaderInteractionTests(unittest.TestCase):
         page=self.load('basic.pptx');session=self.touch_session(page)
         self.touch(page,session,'touchStart',(90,450))
         self.touch(page,session,'touchMove',(230,450))
-        self.assertGreater(self.transform(page,'x'),1)
+        # No free swipe panning in PPTX: the finger never drags the slide.
+        self.assertEqual(self.transform(page,'x'),0)
         self.touch(page,session,'touchCancel');self.clear_events(page)
         self.assertEqual(self.transform(page,'x'),0)
         page.mouse.click(206,450)
@@ -202,6 +218,24 @@ class ReaderInteractionTests(unittest.TestCase):
                     self.assertIn('First slide',text);self.assertIn('Second slide',text)
                 self.assertTrue(page.evaluate('FolioSelection.isActive()'))
 
+    def test_select_all_keeps_visible_highlight_and_menu_after_scrolling(self):
+        page=self.load('basic.docx')
+        self.select(page,'docx')
+        page.evaluate('FolioSelection.selectAll()')
+        page.evaluate('document.getElementById("viewport").scrollTop+=500')
+        page.wait_for_timeout(260)
+        self.assertTrue(page.evaluate('FolioSelection.isActive()'))
+        self.assertTrue(page.evaluate('events.filter(e=>e.type==="selection").at(-1).showMenu'))
+        self.assertTrue(page.evaluate('''() => {
+          const shape=document.querySelector('#folio-selection-highlight path');
+          return !!shape?.getAttribute('d') && shape.getBBox().width > 0;
+        }'''))
+        painted = Image.open(io.BytesIO(page.screenshot())).convert('RGB')
+        page.locator('#folio-selection-highlight path').evaluate(
+            "e => e.style.visibility = 'hidden'")
+        hidden = Image.open(io.BytesIO(page.screenshot())).convert('RGB')
+        self.assertIsNotNone(ImageChops.difference(painted, hidden).getbbox())
+
     def test_search_clears_dom_ranges_before_replacing_text_nodes(self):
         page=self.load('basic.pptx');self.select(page,'pptx')
         page.evaluate("FolioOffice.search('slide')");page.wait_for_timeout(150)
@@ -222,7 +256,7 @@ class ReaderInteractionTests(unittest.TestCase):
     def test_selection_colors_match_folio_not_android_blue_or_yellow(self):
         page=self.load('basic.pptx')
         value=page.locator('.text-block').first.evaluate('e=>getComputedStyle(e,"::selection").backgroundColor')
-        self.assertEqual(value,'rgba(95, 107, 124, 0.4)')
+        self.assertIn(value,('rgba(0, 0, 0, 0)','transparent'))
         page.evaluate("FolioOffice.search('slide')");page.wait_for_timeout(100)
         colors=page.locator('mark').first.evaluate('e=>({bg:getComputedStyle(e).backgroundColor,fg:getComputedStyle(e).color})')
         self.assertEqual(colors,{'bg':'rgb(215, 222, 232)','fg':'rgb(22, 26, 32)'})

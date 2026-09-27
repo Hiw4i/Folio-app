@@ -196,22 +196,34 @@ class _BottomSheetPositionState extends State<_BottomSheetPosition> {
   Widget build(BuildContext context) {
     final media = MediaQuery.of(context);
     final bottom = math.max(media.viewPadding.bottom, media.viewInsets.bottom);
+    // Широкий/горизонтальный экран: диалог открывается компактным справа,
+    // а не по центру. Портрет: вся ширина минус отступы.
+    const widthThreshold = 600.0;
+    const compactMargin = AppSpacing.lg;
+    const compactSheetWidth = 400.0;
+    final alignRight = media.size.width > widthThreshold;
     return Align(
-      alignment: Alignment.bottomCenter,
+      alignment: alignRight ? Alignment.bottomRight : Alignment.bottomCenter,
       child: AnimatedPadding(
         duration: widget.disableAnimations
             ? Duration.zero
             : AppDurations.fast,
         curve: Curves.easeOutCubic,
         padding: EdgeInsets.fromLTRB(
-          AppSpacing.lg + media.viewPadding.left,
-          AppSpacing.lg + media.viewPadding.top,
-          AppSpacing.lg + media.viewPadding.right,
-          AppSpacing.lg + bottom,
+          compactMargin + media.viewPadding.left,
+          compactMargin + media.viewPadding.top,
+          // Правый отступ: системная панель справа + запас.
+          compactMargin + media.viewPadding.right,
+          // Нижний отступ + обход клавиатуры.
+          compactMargin + bottom,
         ),
-        // Keep Folio's existing width cap, without switching to a dialog.
+        // В правом углу — фиксированные 400, в портрете — вся ширина минус 32.
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 640),
+          constraints: BoxConstraints(
+            maxWidth: alignRight
+                ? compactSheetWidth
+                : media.size.width - compactMargin * 2,
+          ),
           child: AnimatedBuilder(
             animation: widget.animation,
             child: SizedBox(width: double.infinity, child: widget.child),

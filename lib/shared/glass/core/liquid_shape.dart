@@ -5,12 +5,21 @@ import 'package:flutter/widgets.dart';
 @immutable
 class LiquidShapeTokens {
   const LiquidShapeTokens({
-    this.pressGrowth = 0.055,
+    this.pressGrowth = 0.0,
+    this.pressPadding = 3.0,
     this.travelGrowth = 0.09,
     this.travelStretch = 0.34,
   });
 
+  /// Пропорциональный press-рост (доля от размера). По умолчанию 0:
+  /// нажатие расширяет материал равномерно, независимо от длины/ширины.
+  /// Оставлен для тонкой настройки, если где-то понадобится масштаб.
   final double pressGrowth;
+
+  /// Равномерный press-рост в px на каждую сторону при press == 1.
+  /// Одинаково приподнимает и длинные пилюли, и круглые кнопки.
+  final double pressPadding;
+
   final double travelGrowth;
   final double travelStretch;
 }
@@ -25,13 +34,23 @@ abstract final class LiquidShape {
   }) {
     final safePress = press.clamp(0.0, 1.08);
     final safeTravel = travel.clamp(0.0, 1.08);
-    final commonGrowth =
-        safePress * tokens.pressGrowth + safeTravel * tokens.travelGrowth;
+    // Travel остаётся пропорциональным (плюс направленный стретч по оси
+    // движения) — это эффект полёта/зума. Press — равномерный абсолютный:
+    // одинаковые px со всех сторон для любого размера, чтобы длинные пилюли
+    // не росли сильно вширь и слабо ввысь, а круглые — слабо со всех сторон.
+    final travelCommon = safeTravel * tokens.travelGrowth;
+    final pressPad = safePress * tokens.pressPadding;
+    final pressGrowthW = safePress * tokens.pressGrowth * rect.width;
+    final pressGrowthH = safePress * tokens.pressGrowth * rect.height;
     return Rect.fromCenter(
       center: rect.center,
       width:
-          rect.width * (1 + commonGrowth + safeTravel * tokens.travelStretch),
-      height: rect.height * (1 + commonGrowth),
+          rect.width *
+              (1 + travelCommon + safeTravel * tokens.travelStretch) +
+          pressGrowthW +
+          pressPad * 2,
+      height:
+          rect.height * (1 + travelCommon) + pressGrowthH + pressPad * 2,
     );
   }
 

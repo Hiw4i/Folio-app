@@ -203,4 +203,6 @@ class _FailingView implements OfficeViewCommands {
   Future<void> showPreviousHit() async {}
   @override
   Future<void> goToPosition(int zeroBasedIndex) async {}
+  @override
+  Future<void> goToPositionInstant(int zeroBasedIndex) async {}
 }

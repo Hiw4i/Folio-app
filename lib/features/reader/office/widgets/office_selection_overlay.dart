@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../../../shared/selection/folio_selection_toolbar.dart';
+import '../../../../shared/selection/selection_visuals.dart';
 
 /// CSS visual-viewport coordinates, normalized so pinch zoom, rotation and
 /// Android's device pixel ratio never get applied twice on the Flutter side.
@@ -31,6 +32,7 @@ class OfficeSelectionSnapshot {
           ? value.clamp(0.0, 1.0).toDouble()
           : null;
     }
+
     final x = coordinate('x');
     final top = coordinate('top');
     final bottom = coordinate('bottom');
@@ -49,8 +51,11 @@ class OfficeSelectionSnapshot {
   @override
   bool operator ==(Object other) =>
       other is OfficeSelectionSnapshot &&
-      active == other.active && showMenu == other.showMenu &&
-      x == other.x && top == other.top && bottom == other.bottom;
+      active == other.active &&
+      showMenu == other.showMenu &&
+      x == other.x &&
+      top == other.top &&
+      bottom == other.bottom;
 
   @override
   int get hashCode => Object.hash(active, showMenu, x, top, bottom);
@@ -79,9 +84,23 @@ class OfficeSelectionOverlay extends StatelessWidget {
         return Align(
           alignment: Alignment.topLeft,
           child: FolioSelectionToolbar(
-            anchors: TextSelectionToolbarAnchors(
-              primaryAnchor: Offset(x, selection.top * constraints.maxHeight),
-              secondaryAnchor: Offset(x, selection.bottom * constraints.maxHeight),
+            anchors: folioVisibleSelectionAnchors(
+              original: TextSelectionToolbarAnchors(
+                primaryAnchor: Offset(x, selection.top * constraints.maxHeight),
+                secondaryAnchor: Offset(
+                  x,
+                  selection.bottom * constraints.maxHeight,
+                ),
+              ),
+              viewport: Offset.zero & constraints.biggest,
+              visibleRects: <Rect>[
+                Rect.fromLTRB(
+                  x - 1,
+                  selection.top * constraints.maxHeight,
+                  x + 1,
+                  selection.bottom * constraints.maxHeight,
+                ),
+              ],
             ),
             buttonItems: <ContextMenuButtonItem>[
               ContextMenuButtonItem(

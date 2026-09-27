@@ -424,6 +424,26 @@ class OfficeRendererTests(unittest.TestCase):
         self.assert_no_chrome_events(page)
         session.detach()
 
+    def test_pptx_two_finger_drag_never_navigates_or_toggles_chrome(self):
+        page = self.load('basic.pptx')
+        self.clear_events(page)
+        session = page.context.new_cdp_session(page)
+        session.send('Emulation.setTouchEmulationEnabled', {'enabled': True})
+        session.send('Input.dispatchTouchEvent', {
+            'type': 'touchStart', 'touchPoints': [{'x': 350, 'y': 450}, {'x': 250, 'y': 450}],
+        })
+        for x in (320, 290, 260, 230, 200):
+            session.send('Input.dispatchTouchEvent', {
+                'type': 'touchMove',
+                'touchPoints': [{'x': x, 'y': 450}, {'x': x - 100, 'y': 450}],
+            })
+            page.wait_for_timeout(20)
+        session.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
+        page.wait_for_timeout(120)
+        self.assertEqual(page.evaluate('document.getElementById("viewport").scrollLeft'), 0)
+        self.assertEqual(page.evaluate('events'), [])
+        session.detach()
+
     def test_pptx_drag_returning_to_origin_is_not_a_tap(self):
         page = self.load('basic.pptx')
         self.clear_events(page)

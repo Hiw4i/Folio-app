@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show Factory;
+import 'package:flutter/gestures.dart' show OneSequenceGestureRecognizer;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -155,14 +157,33 @@ class _OfficeDocumentPlatformViewState
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          AndroidView(
+          // Chromium's native text magnifier needs a real Android surface.
+          // The texture-backed AndroidView samples black pixels on selection.
+          PlatformViewLink(
             viewType: 'folio/office_view',
-            layoutDirection: TextDirection.ltr,
-            creationParams: <String, Object?>{'sessionId': session.id},
-            creationParamsCodec: const StandardMessageCodec(),
-            hitTestBehavior: PlatformViewHitTestBehavior.opaque,
-            onPlatformViewCreated: (viewId) =>
-                _platformViewCreated(viewId, renderer, session.id),
+            surfaceFactory: (context, controller) => AndroidViewSurface(
+              controller: controller as AndroidViewController,
+              gestureRecognizers:
+                  const <Factory<OneSequenceGestureRecognizer>>{},
+              hitTestBehavior: PlatformViewHitTestBehavior.opaque,
+            ),
+            onCreatePlatformView: (params) =>
+                PlatformViewsService.initExpensiveAndroidView(
+                    id: params.id,
+                    viewType: 'folio/office_view',
+                    layoutDirection: TextDirection.ltr,
+                    creationParams: <String, Object?>{'sessionId': session.id},
+                    creationParamsCodec: const StandardMessageCodec(),
+                    onFocus: () => params.onFocusChanged(true),
+                  )
+                  ..addOnPlatformViewCreatedListener(
+                    params.onPlatformViewCreated,
+                  )
+                  ..addOnPlatformViewCreatedListener(
+                    (viewId) =>
+                        _platformViewCreated(viewId, renderer, session.id),
+                  )
+                  ..create(),
           ),
           if (_selection.active && _selection.showMenu)
             OfficeSelectionOverlay(
@@ -203,6 +224,12 @@ class _MethodChannelOfficeView implements OfficeViewCommands {
   @override
   Future<void> goToPosition(int zeroBasedIndex) =>
       _invoke('goToPosition', <String, Object?>{'index': zeroBasedIndex});
+
+  @override
+  Future<void> goToPositionInstant(int zeroBasedIndex) => _invoke(
+    'goToPositionInstant',
+    <String, Object?>{'index': zeroBasedIndex},
+  );
 
   Future<void> _invoke(String method, [Map<String, Object?>? arguments]) async {
     if (_disposed) {

@@ -107,9 +107,17 @@
       // After a pinch, native WebView panning must regain both axes. Likewise,
       // never intercept the browser's selection-handle auto-scroll.
       viewport.style.touchAction = selected() || zoomed() ? 'auto' : 'pinch-zoom';
+      // Увеличенный слайд не должен снапаться и перелистываться на соседей:
+      // свободный пан внутри текущего слайда, снап-точки выкл. На зуме-аут
+      // инлайн сбрасывается и возвращается CSS scroll-snap-type: mandatory.
+      if (horizontal) viewport.style.scrollSnapType = zoomed() ? 'none' : '';
       if (selected() || zoomed()) reset();
     }
     function start(event) {
+      // PowerPoint (horizontal): свободная свайп-прокрутка отключена.
+      // Листание только дискретное — тап или направленный свайп как
+      // команда prev/next обрабатывается в office.js (pointerup).
+      if (horizontal) { reset(); return; }
       if (event.touches.length !== 1 || !canDrive()
           || event.target.closest?.('a,button,input,textarea,select,[contenteditable="true"]')) {
         if (gesture || animation) cancelTap();
@@ -163,11 +171,12 @@
       paint();
       const velocity = event.timeStamp - g.time > 100 ? 0 : g.velocity;
       if (horizontal) {
+        // PowerPoint: без анимации перелистывания — мгновенный переход
+        // на целевой слайд вместо пружинной анимации.
         const projected = position + velocity * 0.12;
         const page = clamp(Math.round(projected / dimension), g.startPage - 1, g.startPage + 1);
         const target = clamp(page * dimension, 0, maximum);
-        if (reduced) finish(target);
-        else springTo(target, clamp(velocity, -2400, 2400));
+        finish(target);
       } else if (position < 0 || position > maximum) {
         if (reduced) finish(clamp(position, 0, maximum));
         else springTo(clamp(position, 0, maximum), velocity);

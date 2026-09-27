@@ -132,6 +132,9 @@ class _FakeOfficeView implements OfficeViewCommands {
   Future<void> goToPosition(int zeroBasedIndex) async {}
 
   @override
+  Future<void> goToPositionInstant(int zeroBasedIndex) async {}
+
+  @override
   Future<void> search(String query) async {
     queries.add(query);
   }

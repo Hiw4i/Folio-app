@@ -32,7 +32,9 @@ Widget folioEditableTextContextMenuBuilder(
 
 /// Folio text-selection toolbar: одна общая liquid-пилюля, только иконки Lucide.
 ///
-/// Показывает только copy и select all — остальные системные действия скрыты.
+/// Reader (read-only) показывает copy/select all. Редактируемый текст
+/// (поле поиска) дополнительно показывает cut/paste — иначе в поиск
+/// невозможно вставить текст. Остальные системные действия скрыты.
 /// Позиционирование (above/below якоря) переиспользует [TextSelectionToolbar],
 /// сама пилюля — единая liquid-поверхность на [GlassShell], а иконки внутри —
 /// плоские зоны нажатия без собственного стекла.
@@ -48,28 +50,78 @@ class FolioSelectionToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    ContextMenuButtonItem? cut;
     ContextMenuButtonItem? copy;
+    ContextMenuButtonItem? paste;
     ContextMenuButtonItem? selectAll;
     for (final item in buttonItems) {
       switch (item.type) {
+        case ContextMenuButtonType.cut:
+          cut ??= item;
         case ContextMenuButtonType.copy:
           copy ??= item;
+        case ContextMenuButtonType.paste:
+          paste ??= item;
         case ContextMenuButtonType.selectAll:
           selectAll ??= item;
         default:
           break;
       }
     }
-    if (copy == null && selectAll == null) {
+    final actions = <_PillAction>[
+      if (cut != null)
+        _PillAction(
+          item: cut,
+          icon: LucideIcons.scissors,
+          semanticsLabel: 'Cut',
+          key: const ValueKey<String>('folio_toolbar_cut'),
+        ),
+      if (copy != null)
+        _PillAction(
+          item: copy,
+          icon: LucideIcons.copy,
+          semanticsLabel: 'Copy',
+          key: const ValueKey<String>('folio_toolbar_copy'),
+        ),
+      if (paste != null)
+        _PillAction(
+          item: paste,
+          icon: LucideIcons.clipboardPaste,
+          semanticsLabel: 'Paste',
+          key: const ValueKey<String>('folio_toolbar_paste'),
+        ),
+      if (selectAll != null)
+        _PillAction(
+          item: selectAll,
+          icon: LucideIcons.textSelect,
+          semanticsLabel: 'Select all',
+          key: const ValueKey<String>('folio_toolbar_select_all'),
+        ),
+    ];
+    if (actions.isEmpty) {
       return const SizedBox.shrink();
     }
     return TextSelectionToolbar(
       anchorAbove: anchors.primaryAnchor,
       anchorBelow: anchors.secondaryAnchor ?? anchors.primaryAnchor,
       toolbarBuilder: (context, child) => child,
-      children: <Widget>[_FolioPill(copy: copy, selectAll: selectAll)],
+      children: <Widget>[_FolioPill(actions: actions)],
     );
   }
+}
+
+class _PillAction {
+  const _PillAction({
+    required this.item,
+    required this.icon,
+    required this.semanticsLabel,
+    required this.key,
+  });
+
+  final ContextMenuButtonItem item;
+  final IconData icon;
+  final String semanticsLabel;
+  final Key key;
 }
 
 /// Одна liquid-пилюля на весь тулбар: единая поверхность [LiquidGlass.fixed]
@@ -77,10 +129,9 @@ class FolioSelectionToolbar extends StatelessWidget {
 /// остаются живыми зонами нажатия, а деформация + контент следуют за пальцем
 /// как у search-эталона.
 class _FolioPill extends StatelessWidget {
-  const _FolioPill({required this.copy, required this.selectAll});
+  const _FolioPill({required this.actions});
 
-  final ContextMenuButtonItem? copy;
-  final ContextMenuButtonItem? selectAll;
+  final List<_PillAction> actions;
 
   static const double buttonExtent = 36;
   static const double edgePadding = 4;
@@ -89,35 +140,27 @@ class _FolioPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final copyItem = copy;
-    final selectAllItem = selectAll;
-    final buttonCount =
-        (copyItem == null ? 0 : 1) + (selectAllItem == null ? 0 : 1);
     final pillWidth =
         edgePadding * 2 +
-        buttonCount * buttonExtent +
-        (buttonCount - 1) * dividerExtent;
+        actions.length * buttonExtent +
+        (actions.length - 1) * dividerExtent;
     // Tight-рамку держит сама универсальная поверхность внутри.
     return _FolioPillSurface(
       width: pillWidth,
       child: Row(
         mainAxisSize: MainAxisSize.min,
+
         children: <Widget>[
-          if (copyItem != null)
+          for (var i = 0; i < actions.length; i++) ...[
+            if (i > 0) const _PillDivider(),
+
             _PillIconButton(
-              key: const ValueKey<String>('folio_toolbar_copy'),
-              item: copyItem,
-              icon: LucideIcons.copy,
-              semanticsLabel: 'Copy',
+              key: actions[i].key,
+              item: actions[i].item,
+              icon: actions[i].icon,
+              semanticsLabel: actions[i].semanticsLabel,
             ),
-          if (copyItem != null && selectAllItem != null) const _PillDivider(),
-          if (selectAllItem != null)
-            _PillIconButton(
-              key: const ValueKey<String>('folio_toolbar_select_all'),
-              item: selectAllItem,
-              icon: LucideIcons.textSelect,
-              semanticsLabel: 'Select all',
-            ),
+          ],
         ],
       ),
     );

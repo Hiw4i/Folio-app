@@ -62,7 +62,6 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
     with SingleTickerProviderStateMixin {
   static const double _opticalPadding = 42;
   static const LiquidShapeTokens _morphShape = LiquidShapeTokens(
-    pressGrowth: 0.055,
     travelGrowth: 0.035,
     travelStretch: 0.08,
   );

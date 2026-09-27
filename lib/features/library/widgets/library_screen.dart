@@ -77,13 +77,19 @@ class _LibraryScreenState extends State<LibraryScreen>
     if (!mounted || _readerOpen || _settingsOpen) {
       return;
     }
-    final document = widget.controller.takePendingDocument();
-    if (document == null) {
+    // Peek first: taking now would drop the document when the route cannot
+    // be pushed (e.g. the widget unmounts before the post-frame callback).
+    if (widget.controller.pendingDocument == null) {
       return;
     }
     _readerOpen = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) {
+        _readerOpen = false;
+        return;
+      }
+      final document = widget.controller.takePendingDocument();
+      if (document == null) {
         _readerOpen = false;
         return;
       }
@@ -451,9 +457,7 @@ class _DocumentOpenContainer extends StatelessWidget {
       openShape: const RoundedRectangleBorder(),
       clipBehavior: Clip.none,
       transitionType: ContainerTransitionType.fade,
-      transitionDuration: reducedMotion
-          ? Duration.zero
-          : AppDurations.medium,
+      transitionDuration: reducedMotion ? Duration.zero : AppDurations.medium,
       closedBuilder: (context, openContainer) => DocumentRow(
         key: ValueKey<String>('document_${document.id}'),
         document: document,

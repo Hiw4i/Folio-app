@@ -2,7 +2,10 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../shared/theme/folio_theme.dart';
+import '../../../shared/utils/file_format.dart' show formatFileSize;
 import '../data/document_entry.dart';
+
+export '../../../shared/utils/file_format.dart' show formatFileSize;
 
 class DocumentRow extends StatefulWidget {
   const DocumentRow({
@@ -47,15 +50,11 @@ class _DocumentRowState extends State<DocumentRow> {
         onTap: widget.onTap,
         child: AnimatedScale(
           scale: _pressed && !reducedMotion ? 0.986 : 1,
-          duration: reducedMotion
-              ? Duration.zero
-              : AppDurations.fastest,
+          duration: reducedMotion ? Duration.zero : AppDurations.fastest,
           curve: Curves.easeOutCubic,
           alignment: Alignment.center,
           child: AnimatedContainer(
-            duration: reducedMotion
-                ? Duration.zero
-                : AppDurations.fastest,
+            duration: reducedMotion ? Duration.zero : AppDurations.fastest,
             color: _pressed ? const Color(0x0FFFFFFF) : const Color(0x00000000),
             padding: AppSpacing.documentRowPadding,
             child: SizedBox(
@@ -138,14 +137,4 @@ class _FormatGlyph extends StatelessWidget {
             ),
     );
   }
-}
-
-String formatFileSize(int bytes) {
-  if (bytes < 1024) {
-    return '$bytes B';
-  }
-  if (bytes < 1024 * 1024) {
-    return '${(bytes / 1024).toStringAsFixed(bytes < 10240 ? 1 : 0)} KB';
-  }
-  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }

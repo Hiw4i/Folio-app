@@ -116,6 +116,11 @@ internal class OfficePlatformView(
                     evaluate("window.FolioOffice?.goToPosition($index);")
                     result.success(null)
                 }
+                "goToPositionInstant" -> {
+                    val index = call.argument<Number>("index")?.toInt() ?: 0
+                    evaluate("window.FolioOffice?.goToPosition($index, false);")
+                    result.success(null)
+                }
                 "copySelection" -> copySelection(result)
                 "selectAll" -> {
                     evaluate("window.FolioSelection?.selectAll();")
@@ -221,16 +226,23 @@ internal class OfficePlatformView(
     )
 
     private fun configureWebView() {
-        webView.setBackgroundColor(Color.TRANSPARENT)
+        // The Android selection magnifier samples the WebView's own surface.
+        // An opaque backing prevents a black loupe around transparent pages.
+        webView.setBackgroundColor(Color.rgb(11, 12, 14))
         // Only our shared spring should provide edge feedback (no Android glow/stretch).
         webView.overScrollMode = WebView.OVER_SCROLL_NEVER
+        // No position indicator bars on the screen edges: navigation is
+        // page-by-page, and CSS already hides webkit scrollbars inside.
+        webView.isVerticalScrollBarEnabled = false
+        webView.isHorizontalScrollBarEnabled = false
         // Authored page/slide colours must not be recoloured by Force Dark.
         // This is the document WebView only; Folio's dark UI stays unchanged.
         webView.isForceDarkAllowed = false
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(webView.settings, false)
         }
-        webView.setLayerType(WebView.LAYER_TYPE_HARDWARE, null)
+        // Let WebView choose its compositor. Forcing a separate hardware layer
+        // can leave Chromium's native selection magnifier with a black capture.
         webView.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_BOUND, true)
         WebView.setWebContentsDebuggingEnabled(
             viewContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0,

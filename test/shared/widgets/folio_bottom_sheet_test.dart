@@ -164,13 +164,15 @@ void main() {
       });
 
       for (final size in <Size>[const Size(900, 1000), const Size(900, 480)]) {
-        testWidgets('remains bottom-aligned at $size', (tester) async {
+        testWidgets('docks bottom-right as a compact sheet at $size', (
+          tester,
+        ) async {
           await _pumpHost(tester, sheet, size: size);
           await _open(tester);
           await tester.pumpAndSettle();
           final rect = tester.getRect(_surface);
-          expect(rect.width, 640);
-          expect(rect.center.dx, size.width / 2);
+          expect(rect.width, 400);
+          expect(rect.right, size.width - 16);
           expect(rect.bottom, size.height - 16);
           expect(rect.height, lessThanOrEqualTo(size.height * 0.85));
           expect(tester.takeException(), isNull);

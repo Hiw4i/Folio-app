@@ -13,6 +13,7 @@ import 'package:flutter/widgets.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import '../../../../shared/selection/folio_selection_toolbar.dart';
+import '../../../../shared/selection/selection_visuals.dart';
 import '../../../../shared/theme/folio_theme.dart';
 import '../../widgets/reader_loading_view.dart';
 import '../logic/pdf_document_renderer.dart';
@@ -42,6 +43,10 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   bool _selectingText = false;
   bool _selectionActionRunning = false;
   int _selectionRevision = 0;
+  PdfTextSelectionRange? _selectedRange;
+  final Map<int, PdfPageText> _selectedPageText = <int, PdfPageText>{};
+  final Set<int> _loadingSelectedPages = <int>{};
+  final Map<int, List<Rect>> _paintedSelectionRects = <int, List<Rect>>{};
 
   @override
   void initState() {
@@ -60,7 +65,10 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       limitRenderingCache: true,
       maxImageBytesCachedOnMemory: _renderCacheBudget,
       horizontalCacheExtent: 0.35,
-      verticalCacheExtent: 0.85,
+      // A deeper vertical cache keeps pages ahead rasterized during fast
+      // flings, so quick scrolling stalls less on re-rendering.
+      // NB: scrollPhysics below is intentionally untouched.
+      verticalCacheExtent: 1.6,
       onePassRenderingSizeThreshold: 2400,
       textSelectionParams: PdfTextSelectionParams(
         enabled: true,
@@ -70,7 +78,8 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
         // Use the same Material handle geometry as SelectionArea in MD/TXT.
         buildSelectionHandle: (context, anchor, state) {
           final leading = anchor.type == PdfTextSelectionAnchorType.a;
-          final rtl = anchor.direction == PdfTextDirection.rtl ||
+          final rtl =
+              anchor.direction == PdfTextDirection.rtl ||
               anchor.direction == PdfTextDirection.vrtl;
           return materialTextSelectionHandleControls.buildHandle(
             context,
@@ -84,13 +93,16 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
           if (anchor.type != PdfTextSelectionAnchorType.a) return Offset.zero;
           // pdfrx anchors the leading handle above the line. Material handles
           // have their tip at the top, so place it below the actual scaled line.
-          final rect = _controller.textSelectionDelegate.doc2local
-              .rectToLocal(context, anchor.rect);
+          final rect = _controller.textSelectionDelegate.doc2local.rectToLocal(
+            context,
+            anchor.rect,
+          );
           return Offset(0, (rect?.height ?? 22) + 22);
         },
         magnifier: const PdfViewerSelectionMagnifierParams(
           // Avoid repeatedly evicting the magnifier's current page image.
           maxImageBytesCachedOnMemory: 8 * 1024 * 1024,
+          builder: _buildCompactMagnifier,
         ),
       ),
       buildContextMenu: _buildContextMenu,
@@ -103,11 +115,14 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       matchTextColor: appColors.pdfSearchMatch,
       activeMatchTextColor: appColors.pdfActiveSearchMatch,
       pagePaintCallbacks: <PdfViewerPagePaintCallback>[
+        _paintSelection,
         widget.renderer.paintSearchMatches,
       ],
       behaviorControlParams: const PdfViewerBehaviorControlParams(
         loadPageDimensionsOnDemand: true,
-        trailingPageLoadingDelay: Duration(milliseconds: 90),
+        // Shorter trailing delay so pages following a fast fling become
+        // available sooner instead of visibly stalling mid-scroll.
+        trailingPageLoadingDelay: Duration(milliseconds: 30),
         enableLowResolutionPagePreview: true,
       ),
       onViewerReady: widget.renderer.attachViewer,
@@ -145,6 +160,98 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   void _textSelectionChanged(PdfTextSelection selection) {
     _selectingText = selection.hasSelectedText;
     _selectionRevision++;
+    _selectedRange = selection.textSelectionPointRange;
+    _selectedPageText.clear();
+    _paintedSelectionRects.clear();
+    final range = _selectedRange;
+    if (range != null) {
+      _selectedPageText[range.start.text.pageNumber] = range.start.text;
+      _selectedPageText[range.end.text.pageNumber] = range.end.text;
+    }
+  }
+
+  static Widget _buildCompactMagnifier(
+    BuildContext context,
+    PdfTextSelectionAnchor anchor,
+    PdfViewerSelectionMagnifierParams params,
+    Widget content,
+    Size contentSize,
+    Offset pointerPosition,
+    Offset magnifierPosition,
+  ) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(
+            color: Color(0x44000000),
+            blurRadius: 8,
+            offset: Offset(0, 3),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(14),
+        child: SizedBox.fromSize(
+          size: folioSelectionMagnifierSize,
+          child: content,
+        ),
+      ),
+    );
+  }
+
+  void _paintSelection(Canvas canvas, Rect pageRect, PdfPage page) {
+    final range = _selectedRange;
+    if (range == null ||
+        page.pageNumber < range.start.text.pageNumber ||
+        page.pageNumber > range.end.text.pageNumber) {
+      return;
+    }
+    var text = _selectedPageText[page.pageNumber];
+    if (text == null) {
+      if (_loadingSelectedPages.add(page.pageNumber)) {
+        final revision = _selectionRevision;
+        unawaited(
+          page
+              .loadStructuredText()
+              .then((loaded) {
+                _loadingSelectedPages.remove(page.pageNumber);
+                if (!mounted || revision != _selectionRevision) return;
+                _selectedPageText[page.pageNumber] = loaded;
+                setState(() {});
+              })
+              .catchError((Object error) {
+                _loadingSelectedPages.remove(page.pageNumber);
+                debugPrint('Folio PDF selection geometry failed: $error');
+              }),
+        );
+      }
+      return;
+    }
+    final start = page.pageNumber == range.start.text.pageNumber
+        ? range.start.index
+        : 0;
+    final end = page.pageNumber == range.end.text.pageNumber
+        ? range.end.index + 1
+        : text.fullText.length;
+    if (end <= start) return;
+    final selected = PdfPageTextRange(pageText: text, start: start, end: end);
+    final rects = <Rect>[];
+    for (final fragment in selected.enumerateFragmentBoundingRects()) {
+      final rect = fragment.bounds.toRectInDocument(
+        page: page,
+        pageRect: pageRect,
+      );
+      if (!rect.isEmpty && rect.isFinite) rects.add(rect);
+    }
+    _paintedSelectionRects[page.pageNumber] = rects;
+    while (_paintedSelectionRects.length > 8) {
+      _paintedSelectionRects.remove(_paintedSelectionRects.keys.first);
+    }
+    canvas.drawPath(
+      folioSelectionPath(rects),
+      Paint()..color = appColors.selection,
+    );
   }
 
   Widget? _buildContextMenu(
@@ -156,13 +263,13 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
           params.textSelectionDelegate.isCopyAllowed &&
           params.textSelectionDelegate.hasSelectedText)
         ContextMenuButtonItem(
-          onPressed: () => unawaited(_selectionAction(() async {
-            final revision = _selectionRevision;
-            final copied = await params.textSelectionDelegate.copyTextSelection();
-            if (copied && mounted && revision == _selectionRevision) {
-              await params.textSelectionDelegate.clearTextSelection();
-            }
-          })),
+          onPressed: () => unawaited(
+            _selectionAction(() async {
+              final copied = await params.textSelectionDelegate
+                  .copyTextSelection();
+              if (!copied) return;
+            }),
+          ),
           type: ContextMenuButtonType.copy,
         ),
       if (params.isTextSelectionEnabled &&
@@ -180,6 +287,16 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     return PdfSelectionContextMenu(
       primaryAnchor: params.anchorA,
       secondaryAnchor: params.anchorB,
+      visibleRects: _paintedSelectionRects.values
+          .expand((rects) => rects)
+          .map(
+            (rect) => params.textSelectionDelegate.doc2local.rectToLocal(
+              context,
+              rect,
+            ),
+          )
+          .whereType<Rect>()
+          .toList(growable: false),
       buttonItems: items,
     );
   }
@@ -228,7 +345,9 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       child: Theme(
         data: Theme.of(context).copyWith(
           textSelectionTheme: TextSelectionThemeData(
-            selectionColor: appColors.selection,
+            // pdfrx still paints its rectangular highlight. The page callback
+            // above replaces it with the shared rounded silhouette.
+            selectionColor: const Color(0x00000000),
             selectionHandleColor: appColors.selectionHandle,
             cursorColor: appColors.cursor,
           ),
@@ -248,12 +367,14 @@ class PdfSelectionContextMenu extends Align {
     required Offset primaryAnchor,
     required List<ContextMenuButtonItem> buttonItems,
     Offset? secondaryAnchor,
+    List<Rect> visibleRects = const <Rect>[],
     super.key,
   }) : super(
          alignment: Alignment.topLeft,
          child: _PdfSelectionMenuContents(
            primaryAnchor: primaryAnchor,
            secondaryAnchor: secondaryAnchor,
+           visibleRects: visibleRects,
            buttonItems: buttonItems,
          ),
        );
@@ -264,11 +385,13 @@ class _PdfSelectionMenuContents extends StatelessWidget {
     required this.primaryAnchor,
     required this.secondaryAnchor,
     required this.buttonItems,
+    required this.visibleRects,
   });
 
   final Offset primaryAnchor;
   final Offset? secondaryAnchor;
   final List<ContextMenuButtonItem> buttonItems;
+  final List<Rect> visibleRects;
 
   @override
   Widget build(BuildContext context) {
@@ -279,9 +402,13 @@ class _PdfSelectionMenuContents extends StatelessWidget {
         DefaultMaterialLocalizations.delegate,
       ],
       child: FolioSelectionToolbar(
-        anchors: TextSelectionToolbarAnchors(
-          primaryAnchor: primaryAnchor,
-          secondaryAnchor: secondaryAnchor,
+        anchors: folioVisibleSelectionAnchors(
+          original: TextSelectionToolbarAnchors(
+            primaryAnchor: primaryAnchor,
+            secondaryAnchor: secondaryAnchor,
+          ),
+          viewport: Offset.zero & MediaQuery.sizeOf(context),
+          visibleRects: visibleRects,
         ),
         buttonItems: buttonItems,
       ),

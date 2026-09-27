@@ -30,11 +30,22 @@ class FileFolioSettingsStore implements FolioSettingsStore {
     if (!await file.exists()) {
       return const FolioSettings();
     }
-    final decoded = jsonDecode(await file.readAsString());
-    if (decoded is! Map<String, dynamic> || decoded['version'] != 1) {
-      throw const FormatException('Unsupported Folio settings file.');
+    try {
+      final decoded = jsonDecode(await file.readAsString());
+      if (decoded is! Map<String, dynamic> || decoded['version'] != 1) {
+        throw const FormatException('Unsupported Folio settings file.');
+      }
+      return FolioSettings.fromJson(decoded);
+    } on FormatException {
+      // A corrupt settings file must not poison every future start.
+      // Quarantine it once (best-effort) and fall back to defaults.
+      try {
+        await file.delete();
+      } on FileSystemException {
+        // Keep defaults when the file cannot be removed.
+      }
+      return const FolioSettings();
     }
-    return FolioSettings.fromJson(decoded);
   }
 
   @override

@@ -21,6 +21,7 @@ import '../word/widgets/word_document_view.dart';
 import 'file_info_sheet.dart';
 import 'reader_chrome.dart';
 import 'reader_loading_view.dart';
+import 'reader_scrubber.dart';
 
 class ReaderScreen extends StatefulWidget {
   const ReaderScreen({
@@ -605,6 +606,21 @@ class _ReaderScreenState extends State<ReaderScreen>
                           );
                         },
                       ),
+                    ),
+                  ),
+                  Positioned(
+                    key: const ValueKey<String>('reader_scrubber_slot'),
+                    right: 0,
+                    top: media.viewPadding.top + 76,
+                    bottom:
+                        media.viewInsets.bottom +
+                        media.viewPadding.bottom +
+                        120,
+                    width: 110,
+                    child: ReaderScrubber(
+                      renderer: _renderer,
+                      scrollController: _scrollController,
+                      progressPercent: _progressPercent,
                     ),
                   ),
                   Positioned(

@@ -43,6 +43,20 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
   static const double _height = 54;
   static const double _lensInset = 4;
 
+  /// Линза при перелёте не только тянется по горизонтали, но и равномерно
+  /// растёт во все стороны (эффект приближения к экрану).
+  /// travelGrowth здесь заметно больше дефолтных 0.09 из LiquidShape,
+  /// чтобы вертикальный рост был виден, а не только горизонтальный стретч.
+  /// Press не задаём: равномерный pressPadding из дефолта одинаково
+  /// приподнимает линзу по вертикали и горизонтали.
+  static const LiquidShapeTokens _lensShape = LiquidShapeTokens(
+    travelGrowth: 0.26,
+    travelStretch: 0.34,
+  );
+  // Максимальная высота линзы: разрешаем вылет за трек (_height),
+  // иначе clamp срежет зум и останется только горизонтальный рост.
+  static const double _maxLensHeight = _height + 20;
+
   late final LiquidSegmentedController _motion;
   int? _pointer;
   int? _focusedIndex;
@@ -118,6 +132,7 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
                 ),
                 press: _motion.press * (_motion.isDraggingLens ? 1 : 0.22),
                 travel: _motion.stretch,
+                tokens: _lensShape,
               );
               final availableHalfWidth = math.max(
                 baseWidth / 2,
@@ -127,7 +142,10 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
                 materialRect.width,
                 availableHalfWidth * 2,
               );
-              final lensHeight = math.min(materialRect.height, _height - 2);
+              final lensHeight = math.min(
+                materialRect.height,
+                _maxLensHeight,
+              );
               final lensRect = Rect.fromCenter(
                 center: Offset(centerX, size.height / 2),
                 width: lensWidth,

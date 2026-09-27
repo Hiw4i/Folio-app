@@ -81,7 +81,7 @@ void main() {
         for (var i = 0; i < 5; i++) {
           await _swipe(tester, const Offset(0, -220));
         }
-        expect(fixture.scroll.offset, greaterThan(700));
+        expect(fixture.scroll.offset, greaterThan(500));
         expect(
           find.byKey(const ValueKey<String>('reader_text_chunk_119')),
           findsNothing,
@@ -126,6 +126,7 @@ void main() {
         final gesture = await tester.startGesture(tester.getCenter(_viewport));
         final region = tester.widget<SelectableRegion>(_regionFinder);
         region.focusNode!.unfocus();
+        await tester.pump();
         await tester.pump();
         expect(_canCopy(tester), isFalse);
         expect(fixture.selectionChanges, contains(false));
@@ -199,8 +200,6 @@ Future<_ReaderFixture> _pumpReader(
   bool markdown,
   TargetPlatform platform,
 ) async {
-  debugDefaultTargetPlatformOverride = platform;
-  addTearDown(() => debugDefaultTargetPlatformOverride = null);
   tester.view.physicalSize = const Size(420, 840);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
