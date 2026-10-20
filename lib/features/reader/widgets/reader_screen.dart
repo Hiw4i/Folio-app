@@ -455,7 +455,10 @@ class _ReaderScreenState extends State<ReaderScreen>
       return;
     }
     final origin = _contentPointerOrigin;
-    if (origin != null && (event.position - origin).distance > 10) {
+    // A movement of exactly the tap slop is already a scroll intent. With a
+    // strict `>` a 10px scroll was reported as a tap, toggling the chrome
+    // instead of reading the document.
+    if (origin != null && (event.position - origin).distance >= 10) {
       _contentPointerMoved = true;
     }
   }
@@ -678,7 +681,10 @@ class _ReaderScreenState extends State<ReaderScreen>
                               viewport.width - 242,
                               top,
                               226,
-                              112,
+                              // Two 48px rows, a 1px divider and the shared
+                              // 8px vertical padding: 113, not 112. The menu
+                              // column overflowed by exactly the missing pixel.
+                              113,
                             ),
                             expandedCornerRadius: 24,
                           );

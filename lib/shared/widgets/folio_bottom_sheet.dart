@@ -52,10 +52,7 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
   static final Map<int, ui.ImageFilter> _blurCache = <int, ui.ImageFilter>{};
 
   static ui.ImageFilter _blurFor(double t) {
-    if (t <= 0 || t >= 1) {
-      return _fullBlur;
-    }
-    final step = (t * 20).round().clamp(1, 20);
+    final step = (t * 20).round().clamp(0, 20);
     return _blurCache.putIfAbsent(
       step,
       () => ui.ImageFilter.blur(
@@ -103,13 +100,16 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
         // with a stronger scrim when blur is off.
         final dimAlpha = (blurEnabled ? 0.3 : 0.6) * t;
         // Quantize `t` to the blur cache steps so nearby animation ticks
-        // share the same ImageFilter instead of allocating a new one.
+        // share the same ImageFilter instead of allocating a new one. The
+        // first step is a zero-sigma filter, not the full blur: rounding
+        // `t` down to zero must not flash a fully blurred backdrop.
         final quantizedT = (t * 20).round() / 20;
+        final blurActive = blurEnabled && t > 0;
         return ClipRect(
           child: BackdropFilter(
             key: const ValueKey<String>('folio_sheet_backdrop'),
-            enabled: blurEnabled && t > 0,
-            filter: blurEnabled && t > 0 && t < 1
+            enabled: blurActive,
+            filter: blurActive && quantizedT < 1
                 ? _blurFor(quantizedT)
                 : _fullBlur,
             child: ColoredBox(
@@ -169,6 +169,7 @@ class _BottomSheetPosition extends StatefulWidget {
 
 class _BottomSheetPositionState extends State<_BottomSheetPosition> {
   Curve? _dragCurve;
+  Curve _transitionCurve = _openingCurve;
 
   static const Curve _openingCurve = Cubic(0.24, 1.2, 0.2, 1.0);
   static const Curve _closingCurve = Curves.easeInOutCubic;
@@ -180,8 +181,23 @@ class _BottomSheetPositionState extends State<_BottomSheetPosition> {
   }
 
   void _onStatus(AnimationStatus status) {
-    if (status == AnimationStatus.completed && _dragCurve != null) {
-      setState(() => _dragCurve = null);
+    if (status == AnimationStatus.completed) {
+      if (_dragCurve != null) {
+        setState(() => _dragCurve = null);
+      }
+      return;
+    }
+    if (status == AnimationStatus.reverse) {
+      // A close that starts from the fully open sheet keeps the reference
+      // closing motion. A close that interrupts the opening keeps the
+      // opening mapping: picking the closing curve mid-flight would assign
+      // a different offset to the same animation value and teleport the
+      // surface instead of continuing from where the finger last saw it.
+      final closingFromRest = widget.animation.value >= 1;
+      final next = closingFromRest ? _closingCurve : _openingCurve;
+      if (next != _transitionCurve) {
+        setState(() => _transitionCurve = next);
+      }
     }
   }
 
@@ -206,13 +222,8 @@ class _BottomSheetPositionState extends State<_BottomSheetPosition> {
     super.dispose();
   }
 
-  double get _positionValue {
-    final curve = _dragCurve ??
-        (widget.animation.status == AnimationStatus.reverse
-            ? _closingCurve
-            : _openingCurve);
-    return curve.transform(widget.animation.value);
-  }
+  double get _positionValue =>
+      (_dragCurve ?? _transitionCurve).transform(widget.animation.value);
 
   @override
   Widget build(BuildContext context) {
