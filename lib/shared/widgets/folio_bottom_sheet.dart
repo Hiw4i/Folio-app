@@ -46,6 +46,25 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
   static const _backdropRatio = 350 / 700;
   static final _fullBlur = ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12);
 
+  /// Quantized backdrop blurs (0.05 steps → 20 entries): `ImageFilter.blur`
+  /// allocated per animation tick forces a backdrop re-raster; sharing one
+  /// filter per step keeps the animation pixel-identical but allocation-free.
+  static final Map<int, ui.ImageFilter> _blurCache = <int, ui.ImageFilter>{};
+
+  static ui.ImageFilter _blurFor(double t) {
+    if (t <= 0 || t >= 1) {
+      return _fullBlur;
+    }
+    final step = (t * 20).round().clamp(1, 20);
+    return _blurCache.putIfAbsent(
+      step,
+      () => ui.ImageFilter.blur(
+        sigmaX: 12 * step / 20,
+        sigmaY: 12 * step / 20,
+      ),
+    );
+  }
+
   final WidgetBuilder builder;
   final bool disableAnimations;
   final double backdropOpacity;
@@ -83,12 +102,15 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
         // Without blur the same 0.3 dim looks washed out, so compensate
         // with a stronger scrim when blur is off.
         final dimAlpha = (blurEnabled ? 0.3 : 0.6) * t;
+        // Quantize `t` to the blur cache steps so nearby animation ticks
+        // share the same ImageFilter instead of allocating a new one.
+        final quantizedT = (t * 20).round() / 20;
         return ClipRect(
           child: BackdropFilter(
             key: const ValueKey<String>('folio_sheet_backdrop'),
             enabled: blurEnabled && t > 0,
             filter: blurEnabled && t > 0 && t < 1
-                ? ui.ImageFilter.blur(sigmaX: 12 * t, sigmaY: 12 * t)
+                ? _blurFor(quantizedT)
                 : _fullBlur,
             child: ColoredBox(
               color: Colors.black.withValues(alpha: dimAlpha),

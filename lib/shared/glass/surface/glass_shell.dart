@@ -149,8 +149,14 @@ class _ShellShadowPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ShellShadowPainter oldDelegate) =>
-      oldDelegate.path != path || oldDelegate.opacity != opacity;
+  bool shouldRepaint(covariant _ShellShadowPainter oldDelegate) {
+    if (oldDelegate.path != path) {
+      return true;
+    }
+    // Quantize fade opacity: sub-5% shadow alpha steps are invisible but
+    // each distinct opacity allocates a Paint+MaskFilter in paint().
+    return (oldDelegate.opacity * 20).round() != (opacity * 20).round();
+  }
 }
 
 class _ShellPainter extends CustomPainter {
@@ -257,11 +263,18 @@ class _ShellPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _ShellPainter oldDelegate) =>
-      oldDelegate.path != path ||
-      oldDelegate.glowCenter != glowCenter ||
-      oldDelegate.press != press ||
-      oldDelegate.focused != focused ||
-      oldDelegate.blurEnabled != blurEnabled ||
-      oldDelegate.fill != fill;
+  bool shouldRepaint(covariant _ShellPainter oldDelegate) {
+    // Quantize press to 0.05 steps: pointer-velocity press jitters every
+    // frame, but a <5% glow change is invisible. This drops most press-only
+    // repaints (each allocates two RadialGradients) with zero visual drift.
+    // GlowCenter stays exact so the highlight never lags the finger.
+    if (oldDelegate.path != path ||
+        oldDelegate.glowCenter != glowCenter ||
+        oldDelegate.focused != focused ||
+        oldDelegate.blurEnabled != blurEnabled ||
+        oldDelegate.fill != fill) {
+      return true;
+    }
+    return (oldDelegate.press * 20).round() != (press * 20).round();
+  }
 }
