@@ -6,6 +6,7 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../../../shared/glass/liquid_glass.dart';
 import '../../../shared/theme/folio_theme.dart';
+import '../../../shared/widgets/folio_status_view.dart';
 import '../../../shared/widgets/scroll_edge_fade.dart';
 import '../../reader/data/document_content_source.dart';
 import '../../reader/logic/reader_preloader.dart';
@@ -367,7 +368,7 @@ class _LibraryContent extends StatelessWidget {
   }
 }
 
-class _DocumentSliver extends StatelessWidget {
+class _DocumentSliver extends StatefulWidget {
   const _DocumentSliver({
     required this.documents,
     required this.controller,
@@ -383,10 +384,31 @@ class _DocumentSliver extends StatelessWidget {
   final VoidCallback onReaderClosed;
 
   @override
-  Widget build(BuildContext context) {
-    final indexById = <String, int>{
+  State<_DocumentSliver> createState() => _DocumentSliverState();
+}
+
+class _DocumentSliverState extends State<_DocumentSliver> {
+  Map<String, int> _indexById = const <String, int>{};
+  List<DocumentEntry> _lastDocuments = const <DocumentEntry>[];
+
+  Map<String, int> _cachedIndex(List<DocumentEntry> documents) {
+    // Rebuilt O(n) only when the list identity/length/content changes —
+    // not on every parent rebuild (search keystrokes, chrome ticks).
+    if (identical(documents, _lastDocuments) &&
+        documents.length == _indexById.length) {
+      return _indexById;
+    }
+    _lastDocuments = documents;
+    _indexById = <String, int>{
       for (var i = 0; i < documents.length; i++) documents[i].id: i,
     };
+    return _indexById;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final documents = widget.documents;
+    final indexById = _cachedIndex(documents);
     return SliverList(
       delegate: SliverChildBuilderDelegate(
         (context, index) {
@@ -399,10 +421,10 @@ class _DocumentSliver extends StatelessWidget {
                 children: <Widget>[
                   _DocumentOpenContainer(
                     document: document,
-                    controller: controller,
-                    documentContentSource: documentContentSource,
-                    onBeginOpen: onBeginOpen,
-                    onReaderClosed: onReaderClosed,
+                    controller: widget.controller,
+                    documentContentSource: widget.documentContentSource,
+                    onBeginOpen: widget.onBeginOpen,
+                    onReaderClosed: widget.onReaderClosed,
                   ),
                   if (index < documents.length - 1)
                     Padding(
@@ -579,34 +601,21 @@ class _PermissionNotice extends StatelessWidget {
                 AppSpacing.xs,
                 AppSpacing.sm,
               ),
-              child: Column(
+              child: FolioStatusView(
+                title: 'Allow file access',
+                message: 'Folio needs access to find documents stored on this device. You can still open individual files from other apps.',
+                messagePadding: EdgeInsets.only(right: AppSpacing.md),
+                textAlign: TextAlign.start,
                 crossAxisAlignment: CrossAxisAlignment.start,
-                children: <Widget>[
-                  Text(
-                    'Allow file access',
-                    style: AppTextStyles.subheading(context),
+                action: Transform.translate(
+                  offset: const Offset(-40, 0),
+                  child: LiquidGlassButton(
+                    label: 'Open settings',
+                    width: 142,
+                    height: 50,
+                    onTap: onOpenSettings,
                   ),
-                  SizedBox(height: AppSpacing.xs),
-                  Padding(
-                    padding: EdgeInsets.only(right: AppSpacing.md),
-                    child: Text(
-                      'Folio needs access to find documents stored on this device. You can still open individual files from other apps.',
-                      style: AppTextStyles.metadata(context),
-                    ),
-                  ),
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Transform.translate(
-                      offset: const Offset(-40, 0),
-                      child: LiquidGlassButton(
-                        label: 'Open settings',
-                        width: 142,
-                        height: 50,
-                        onTap: onOpenSettings,
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ),
@@ -659,43 +668,33 @@ class _UnavailableRecovery extends StatelessWidget {
                       AppSpacing.xl,
                       AppSpacing.md,
                     ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Text(
-                          'File access expired',
-                          style: AppTextStyles.overlayTitle(context),
-                        ),
-                        SizedBox(height: AppSpacing.md),
-                        Text(
+                    child: FolioStatusView(
+                      title: 'File access expired',
+                      message:
                           'Folio can no longer reach "${document.name}". Select it again or remove it from Recents.',
-                          textAlign: TextAlign.center,
-                          style: AppTextStyles.metadata(context),
-                        ),
-                        SizedBox(height: AppSpacing.sm),
-                        LiquidGlassButton(
-                          label: 'Grant access again',
-                          width: 190,
-                          height: 50,
-                          onTap: onRecover,
-                        ),
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: onRemove,
-                          child: Padding(
-                            padding: EdgeInsets.fromLTRB(
-                              AppSpacing.lg,
-                              AppSpacing.md,
-                              AppSpacing.lg,
-                              AppSpacing.lg,
-                            ),
-                            child: Text(
-                              'Remove from Recents',
-                              style: AppTextStyles.buttonSmall(context),
-                            ),
+                      titleStyle: AppTextStyles.overlayTitle(context),
+                      action: LiquidGlassButton(
+                        label: 'Grant access again',
+                        width: 190,
+                        height: 50,
+                        onTap: onRecover,
+                      ),
+                      footer: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: onRemove,
+                        child: Padding(
+                          padding: EdgeInsets.fromLTRB(
+                            AppSpacing.lg,
+                            0,
+                            AppSpacing.lg,
+                            AppSpacing.lg,
+                          ),
+                          child: Text(
+                            'Remove from Recents',
+                            style: AppTextStyles.buttonSmall(context),
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -759,22 +758,7 @@ class _StatusView extends StatelessWidget {
           AppSpacing.xxxxl,
           AppSpacing.xxxxxl + AppSpacing.xxl,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.subheading(context),
-            ),
-            SizedBox(height: AppSpacing.md),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.metadata(context),
-            ),
-          ],
-        ),
+        child: FolioStatusView(title: title, message: message),
       ),
     );
   }

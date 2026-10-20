@@ -149,7 +149,11 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     List<List<int>> rawHits;
     try {
       final starts = loaded.chunks.map((chunk) => chunk.startOffset).toList();
-      rawHits = loaded.text.length <= 16384
+      // Keep only tiny documents on the UI thread. The markdown projection
+      // does `codeUnits.toList + 3x RegExp + fromCharCodes` — at 16KB that
+      // already drops frames on keystrokes, so anything above 4KB goes to
+      // an isolate. Tiny docs stay sync to avoid isolate spawn latency.
+      rawHits = loaded.text.length <= 4096
           ? _findSearchHits(loaded.text, normalized, loaded.isMarkdown, starts)
           : await Isolate.run<List<List<int>>>(
               () => _findSearchHits(

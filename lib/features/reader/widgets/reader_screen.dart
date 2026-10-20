@@ -9,6 +9,7 @@ import 'package:scroll_to_index/scroll_to_index.dart';
 import '../../../shared/glass/liquid_glass.dart';
 import '../../../shared/settings/folio_settings_scope.dart';
 import '../../../shared/theme/folio_theme.dart';
+import '../../../shared/widgets/folio_status_view.dart';
 import '../../library/data/document_entry.dart';
 import '../data/document_content_source.dart';
 import '../logic/document_renderer.dart';
@@ -958,18 +959,36 @@ const TextStyle _titleMeasureStyle = TextStyle(
   letterSpacing: -0.1,
 );
 
+/// Width cache for title truncation: `_TopChromeContent` runs inside a
+/// `LayoutBuilder` on every chrome tick/resize and binary-searches the
+/// truncation point, so uncached `TextPainter.layout` would allocate dozens
+/// of painters per frame. Bounded to 256 entries, evicted wholesale.
+final Map<String, double> _titleWidthCache = <String, double>{};
+
 double _measureTitleWidth(
   String text,
   TextDirection direction,
   TextScaler scaler,
 ) {
+  final scale = (scaler.scale(14) / 14).toStringAsFixed(3);
+  final key = '$text|${direction.index}|$scale';
+  final cached = _titleWidthCache[key];
+  if (cached != null) {
+    return cached;
+  }
   final painter = TextPainter(
     text: TextSpan(text: text, style: _titleMeasureStyle),
     maxLines: 1,
     textDirection: direction,
     textScaler: scaler,
   )..layout();
-  return painter.width;
+  final width = painter.width;
+  painter.dispose();
+  if (_titleWidthCache.length > 256) {
+    _titleWidthCache.clear();
+  }
+  _titleWidthCache[key] = width;
+  return width;
 }
 
 /// Truncates a file name to [maxWidth], keeping the extension readable:
@@ -1211,6 +1230,37 @@ class _SearchNavigator extends StatelessWidget {
   static const double _gap = 8;
   static const double _buttonWidth = 34;
 
+  /// Label width cache: this widget rebuilds on every renderer notify
+  /// (each keystroke/page change). Labels are a tiny closed set
+  /// (`Searching…`, `No matches`, `N of M`), so cache the text width.
+  static final Map<String, double> _labelWidthCache = <String, double>{};
+
+  static double _measuredLabelWidth(
+    String label,
+    TextStyle style,
+    TextDirection direction,
+    TextScaler scaler,
+  ) {
+    final scale = (scaler.scale(12.5) / 12.5).toStringAsFixed(3);
+    final key = '$label|${direction.index}|$scale';
+    final cached = _labelWidthCache[key];
+    if (cached != null) {
+      return cached;
+    }
+    final textPainter = TextPainter(
+      text: TextSpan(text: label, style: style),
+      textDirection: direction,
+      textScaler: scaler,
+    )..layout();
+    final width = textPainter.width;
+    textPainter.dispose();
+    if (_labelWidthCache.length > 64) {
+      _labelWidthCache.clear();
+    }
+    _labelWidthCache[key] = width;
+    return width;
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentRenderer = renderer;
@@ -1225,19 +1275,14 @@ class _SearchNavigator extends StatelessWidget {
         : currentRenderer.hitCount == 0
         ? 'No matches'
         : '${currentRenderer.activeHitIndex + 1} of ${currentRenderer.hitCount}';
-    final textPainter = TextPainter(
-      text: TextSpan(text: label, style: _labelStyle(context)),
-      textDirection: Directionality.of(context),
-      textScaler: MediaQuery.textScalerOf(context),
-    )..layout();
+    final labelWidth = _measuredLabelWidth(
+      label,
+      _labelStyle(context),
+      Directionality.of(context),
+      MediaQuery.textScalerOf(context),
+    );
     final width =
-        _leftPadding +
-        textPainter.width +
-        _gap +
-        _buttonWidth * 2 +
-        _rightPadding +
-        4;
-    textPainter.dispose();
+        _leftPadding + labelWidth + _gap + _buttonWidth * 2 + _rightPadding + 4;
     return LiquidGlass.fixed(
       key: const ValueKey<String>('reader_search_navigator_glass'),
       size: Size(width, _height),
@@ -1436,23 +1481,7 @@ class _ReaderStatus extends StatelessWidget {
           AppSpacing.xxxxl,
           AppSpacing.xxxxxl + AppSpacing.xl + AppSpacing.lg,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.subheading(context),
-            ),
-            SizedBox(height: AppSpacing.md),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: AppTextStyles.metadata(context),
-            ),
-            if (action != null) ...<Widget>[SizedBox(height: AppSpacing.xs), action!],
-          ],
-        ),
+        child: FolioStatusView(title: title, message: message, action: action),
       ),
     );
   }

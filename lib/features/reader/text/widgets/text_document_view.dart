@@ -4,6 +4,7 @@ import 'package:markdown/markdown.dart' as markdown;
 import 'package:scroll_to_index/scroll_to_index.dart';
 
 import '../../../../shared/theme/folio_theme.dart';
+import '../../../../shared/widgets/folio_status_view.dart';
 import '../../../../shared/widgets/scroll_edge_fade.dart';
 import '../data/text_document.dart';
 import '../../logic/reader_state.dart';
@@ -406,17 +407,9 @@ class _EmptyDocument extends StatelessWidget {
     return Center(
       child: Padding(
         padding: EdgeInsets.symmetric(horizontal: AppSpacing.xxxl),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text('Empty document', style: AppTextStyles.subheading(context)),
-            SizedBox(height: AppSpacing.xs),
-            Text(
-              'There is no text to display.',
-              textAlign: TextAlign.center,
-              style: AppTextStyles.metadata(context),
-            ),
-          ],
+        child: FolioStatusView(
+          title: 'Empty document',
+          message: 'There is no text to display.',
         ),
       ),
     );

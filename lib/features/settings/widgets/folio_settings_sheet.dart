@@ -6,6 +6,7 @@ import '../../../shared/settings/folio_settings_scope.dart';
 import '../../../shared/theme/folio_theme.dart';
 import '../../../shared/widgets/folio_bottom_sheet.dart';
 import '../../../shared/widgets/folio_sheet_content.dart';
+import '../../../shared/widgets/folio_status_view.dart';
 
 Future<void> showFolioSettingsSheet(BuildContext context) async {
   final controller = FolioSettingsScope.maybeControllerOf(context);
@@ -82,13 +83,14 @@ class FolioSettingsSheet extends StatelessWidget {
             ),
             if (controller.hasSaveError) ...<Widget>[
               SizedBox(height: AppSpacing.md),
-              Text(
-                'Could not save settings. Changes still apply for this session.',
-                style: AppTextStyles.metadata(context),
-              ),
-              TextButton(
-                onPressed: controller.retrySave,
-                child: const Text('Retry'),
+              FolioStatusView(
+                message: 'Could not save settings. Changes still apply for this session.',
+                textAlign: TextAlign.start,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                action: TextButton(
+                  onPressed: controller.retrySave,
+                  child: const Text('Retry'),
+                ),
               ),
             ],
           ],
