@@ -41,6 +41,9 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   bool _disposed = false;
   bool _probingText = false;
   int _textProbeRevision = 0;
+  int _seekRevision = 0;
+  bool _seekRunning = false;
+  double? _pendingSeekFraction;
 
   int currentPage = 1;
   int pageCount = 0;
@@ -64,12 +67,58 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   /// any animation, so dragging the scrubber never waits for rasterization
   /// of intermediate pages. Falls back to a page jump when the viewer
   /// layout is not ready yet.
+  ///
+  /// Rapid scrub drags coalesce: while a seek is in flight only the latest
+  /// fraction is kept (`_pendingSeekFraction`) and stale completions are
+  /// dropped via `_seekRevision`, so a 120Hz drag never piles up dozens of
+  /// concurrent `goToPosition` calls.
   Future<void> seekToFraction(double fraction) async {
+    if (_disposed || _viewerController == null) {
+      return;
+    }
+    final target = fraction.clamp(0.0, 1.0);
+    _seekRevision++;
+    if (_seekRunning) {
+      _pendingSeekFraction = target;
+      return;
+    }
+    _seekRunning = true;
+    var current = target;
+    try {
+      while (true) {
+        final revision = _seekRevision;
+        await _doSeek(current);
+        if (_disposed) {
+          break;
+        }
+        final next = _pendingSeekFraction;
+        _pendingSeekFraction = null;
+        // No newer scrub event arrived while seeking: done. The revision
+        // check also covers the case where a seek arrived and was already
+        // consumed as `next`.
+        if (next == null && revision == _seekRevision) {
+          break;
+        }
+        if (next == null) {
+          break;
+        }
+        current = next;
+      }
+    } finally {
+      _seekRunning = false;
+      final trailing = _pendingSeekFraction;
+      _pendingSeekFraction = null;
+      if (trailing != null && !_disposed) {
+        unawaited(seekToFraction(trailing));
+      }
+    }
+  }
+
+  Future<void> _doSeek(double target) async {
     final controller = _viewerController;
     if (_disposed || controller == null) {
       return;
     }
-    final target = fraction.clamp(0.0, 1.0);
     try {
       if (controller.isReady) {
         final docHeight = controller.documentSize.height;
@@ -530,6 +579,8 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   @override
   Future<void> close() async {
     _generation += 1;
+    _seekRevision += 1;
+    _pendingSeekFraction = null;
     _detachViewer();
     _documentRef = null;
     final source = _preparedSource;
@@ -544,6 +595,8 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   void dispose() {
     _disposed = true;
     _generation += 1;
+    _seekRevision += 1;
+    _pendingSeekFraction = null;
     _detachViewer();
     scrollFraction.dispose();
     final source = _preparedSource;

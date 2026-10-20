@@ -4,3 +4,11 @@ analyzer:
   exclude:
     - build/**
     - android/**
+  language:
+    strict-casts: true
+
+linter:
+  rules:
+    # Scrub/seek fire-and-forget must stay explicit (`unawaited`) so rapid
+    # drags never leave dangling futures silently.
+    unawaited_futures: true

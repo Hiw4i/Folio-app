@@ -159,4 +159,49 @@ void main() {
     );
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('rapid 120Hz scrub stays 1:1 with no gesture drop', (
+    tester,
+  ) async {
+    await openReader(
+      tester,
+      name: 'Scrub.txt',
+      body:
+          'Quiet text.\n\n'
+          '${List<String>.filled(120, 'A calm line for scrolling.\n\n').join()}',
+    );
+
+    final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
+    expect(grip, findsOneWidget);
+    final startCenter = tester.getCenter(grip);
+    final gesture = await tester.startGesture(
+      startCenter + const Offset(0, 20),
+    );
+    // Simulate a very fast fling-like scrub: 30 tiny updates without
+    // waiting, as a 120Hz finger would deliver them.
+    var fingerDy = 0.0;
+    for (var i = 0; i < 30; i++) {
+      await gesture.moveBy(const Offset(0, 5));
+      fingerDy += 5;
+    }
+    await tester.pump();
+    // The knob kept tracking (no pointer drop mid-gesture) and the pill
+    // stayed up the whole time.
+    final endCenter = tester.getCenter(grip);
+    expect(
+      (endCenter.dy - startCenter.dy - fingerDy).abs(),
+      lessThan(24),
+    );
+    expect(
+      find.byKey(const ValueKey<String>('reader_scrub_pill')),
+      findsOneWidget,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('reader_scrub_pill')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
 }

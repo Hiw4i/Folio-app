@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 
@@ -53,12 +54,34 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
   static const double _grabHalo = 14;
 
   bool _scrubbing = false;
-  double _scrubFraction = 0;
 
-  /// Knob travel (px) from the last build. Drag updates advance the
-  /// fraction by `delta.dy / _dragTravel`, so the knob follows the finger
-  /// strictly 1:1 with no snap-to-finger teleport on grab.
-  double _dragTravel = 0;
+  /// Finger fraction during scrub. A [ValueNotifier] so 120Hz drag updates
+  /// repaint only the knob/pill (via [ValueListenableBuilder]) instead of
+  /// `setState`-ing the whole strip on every pixel.
+  final ValueNotifier<double> _scrubFraction = ValueNotifier<double>(0);
+
+  /// Knob travel (px) from the last layout. Layout cache only: written
+  /// during build without `setState`, read by the next drag update so the
+  /// knob follows the finger strictly 1:1 with no snap-to-finger teleport.
+  double _travelCache = 0;
+
+  /// Frame-coalesced document seek: drag events only store [_pendingSeek],
+  /// the actual `jumpTo/goToPosition` runs at most once per frame.
+  bool _seekFrameScheduled = false;
+  double _pendingSeek = 0;
+  bool _hasPendingSeek = false;
+
+  /// Heavy seeks (PDF rasterization, Office platform channel) are additionally
+  /// throttled: at most one every [_heavySeekInterval], plus a trailing seek
+  /// on release so the document always lands exactly under the finger.
+  static const Duration _heavySeekInterval = Duration(milliseconds: 80);
+  DateTime _lastHeavySeek = DateTime.fromMillisecondsSinceEpoch(0);
+  Timer? _heavyTimer;
+  double? _trailingHeavySeek;
+
+  /// External progress (scroll fling, page change) coalesced to one rebuild
+  /// per frame instead of one `setState` per notify storm tick.
+  bool _externalFrameScheduled = false;
 
   bool get _isText => widget.renderer is TextDocumentRenderer;
   bool get _isPdf => widget.renderer is PdfDocumentRenderer;
@@ -90,6 +113,11 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
       widget.renderer.addListener(_handleExternalProgress);
       _pdf?.scrollFraction.addListener(_handleExternalProgress);
       _scrubbing = false;
+      _hasPendingSeek = false;
+      _seekFrameScheduled = false;
+      _trailingHeavySeek = null;
+      _heavyTimer?.cancel();
+      _heavyTimer = null;
     }
     if (!identical(oldWidget.progressPercent, widget.progressPercent)) {
       oldWidget.progressPercent.removeListener(_handleExternalProgress);
@@ -99,6 +127,8 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
 
   @override
   void dispose() {
+    _heavyTimer?.cancel();
+    _scrubFraction.dispose();
     widget.renderer.removeListener(_handleExternalProgress);
     widget.progressPercent.removeListener(_handleExternalProgress);
     _pdf?.scrollFraction.removeListener(_handleExternalProgress);
@@ -108,11 +138,23 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
   /// Follows the document position so the strip stays live. The pill is
   /// shown only while the strip is held, so its `%` / `N / M` text never
   /// duplicates the bottom-left indicator outside scrubbing.
+  ///
+  /// Coalesced to one rebuild per frame: flings/page-changes can fire
+  /// several notifies per frame (renderer + progress + scrollFraction).
   void _handleExternalProgress() {
     if (!mounted || _scrubbing || !_supported) {
       return;
     }
-    setState(() {});
+    if (_externalFrameScheduled) {
+      return;
+    }
+    _externalFrameScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _externalFrameScheduled = false;
+      if (mounted && !_scrubbing) {
+        setState(() {});
+      }
+    });
   }
 
   bool _isReady() {
@@ -230,6 +272,8 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
     return '';
   }
 
+  bool get _isHeavy => _isPdf || _isWord;
+
   Future<void> _seek(double fraction) async {
     final renderer = widget.renderer;
     final target = fraction.clamp(0.0, 1.0);
@@ -251,25 +295,91 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
     }
   }
 
+  void _scheduleSeek(double fraction) {
+    _pendingSeek = fraction.clamp(0.0, 1.0);
+    _hasPendingSeek = true;
+    if (_seekFrameScheduled) {
+      return;
+    }
+    _seekFrameScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _seekFrameScheduled = false;
+      _flushSeek();
+    });
+  }
+
+  void _flushSeek() {
+    if (!_hasPendingSeek || !mounted) {
+      return;
+    }
+    final target = _pendingSeek;
+    _hasPendingSeek = false;
+    if (_isHeavy) {
+      final now = DateTime.now();
+      if (now.difference(_lastHeavySeek) < _heavySeekInterval) {
+        // Too soon after the previous raster/channel jump: remember the
+        // latest finger position and deliver it on the throttle boundary.
+        // The knob itself already follows the finger at 120Hz via
+        // `_scrubFraction`, so this throttling is invisible.
+        _trailingHeavySeek = target;
+        _heavyTimer?.cancel();
+        final wait =
+            _heavySeekInterval - now.difference(_lastHeavySeek);
+        _heavyTimer = Timer(wait, () {
+          final trailing = _trailingHeavySeek;
+          _trailingHeavySeek = null;
+          if (trailing == null || !mounted) {
+            return;
+          }
+          _lastHeavySeek = DateTime.now();
+          unawaited(_seek(trailing));
+        });
+        return;
+      }
+      _lastHeavySeek = now;
+    }
+    unawaited(_seek(target));
+  }
+
   void _beginScrub(double fraction) {
     if (_scrubbing) {
       return;
     }
-    setState(() {
-      _scrubbing = true;
-      _scrubFraction = fraction.clamp(0.0, 1.0);
-    });
+    final start = fraction.clamp(0.0, 1.0);
+    _scrubFraction.value = start;
+    _lastHeavySeek = DateTime.fromMillisecondsSinceEpoch(0);
+    _trailingHeavySeek = null;
+    _heavyTimer?.cancel();
+    _heavyTimer = null;
+    setState(() => _scrubbing = true);
+    // First jump is immediate so the document starts moving with the finger.
+    if (_isHeavy) {
+      _lastHeavySeek = DateTime.now();
+    }
+    unawaited(_seek(start));
   }
 
   void _updateScrub(double fraction) {
     final target = fraction.clamp(0.0, 1.0);
-    setState(() => _scrubFraction = target);
-    unawaited(_seek(target));
+    // No setState here: only the knob/pill listen to `_scrubFraction`.
+    _scrubFraction.value = target;
+    _scheduleSeek(target);
   }
 
   void _endScrub() {
     if (!_scrubbing) {
       return;
+    }
+    _heavyTimer?.cancel();
+    _heavyTimer = null;
+    // Exact landing: deliver the very latest finger position synchronously.
+    final trailing = _trailingHeavySeek;
+    _trailingHeavySeek = null;
+    if (_hasPendingSeek || trailing != null) {
+      final target = trailing ?? _pendingSeek;
+      _hasPendingSeek = false;
+      _lastHeavySeek = DateTime.now();
+      unawaited(_seek(target));
     }
     setState(() => _scrubbing = false);
   }
@@ -277,17 +387,17 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
   void _dragStart() {
     // Engage at the current position: no teleport, the knob stays exactly
     // where the finger caught it.
-    _beginScrub(_scrubbing ? _scrubFraction : _liveFraction());
+    _beginScrub(_scrubbing ? _scrubFraction.value : _liveFraction());
   }
 
   void _dragUpdate(double dy) {
-    if (_dragTravel <= 0) {
+    if (_travelCache <= 0) {
       return;
     }
     if (!_scrubbing) {
       _dragStart();
     }
-    _updateScrub(_scrubFraction + dy / _dragTravel);
+    _updateScrub(_scrubFraction.value + dy / _travelCache);
   }
 
   @override
@@ -295,8 +405,6 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
     if (!_supported || !_isReady() || !_isLongEnough()) {
       return const SizedBox.shrink();
     }
-    final fraction = _scrubbing ? _scrubFraction : _liveFraction();
-    final label = _scrubbing ? _scrubLabel(_scrubFraction) : _liveLabel();
     return LayoutBuilder(
       builder: (context, constraints) {
         final height = constraints.maxHeight;
@@ -304,94 +412,127 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
           return const SizedBox.shrink();
         }
         final travel = math.max(0.0, height - _edgeInset * 2 - _knobHeight);
-        final knobY = _edgeInset + fraction.clamp(0.0, 1.0) * travel;
-        final pillY = (fraction.clamp(0.0, 1.0) * (height - _pillHeight))
-            .clamp(0.0, math.max(0.0, height - _pillHeight))
-            .toDouble();
-        final gripHeight = _knobHeight + _grabHalo * 2;
-        final gripTop = (knobY - _grabHalo)
-            .clamp(0.0, math.max(0.0, height - gripHeight))
-            .toDouble();
-        _dragTravel = travel;
-        return Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            // Readout only: appears while the knob is held and deliberately
-            // ignores all pointers — pressing it does nothing.
-            // NB: both slots are keyed so inserting the pill never remounts
-            // the knob's GestureDetector mid-gesture (that would drop the
-            // tracked pointer and stick `_scrubbing` on).
-            if (_scrubbing)
-              Positioned(
-                key: const ValueKey<String>('reader_scrub_pill_slot'),
-                right: _stripWidth + 4,
-                top: pillY,
-                child: IgnorePointer(
-                  child: _ScrubPill(
-                    key: const ValueKey<String>('reader_scrub_pill'),
-                    label: label,
-                  ),
-                ),
-              ),
-            // The ONLY interactive element: the small knob (plus an
-            // invisible grab halo). No taps anywhere else, no full-height
-            // strip: every other touch passes through to the document.
-            Positioned(
-              key: const ValueKey<String>('reader_scrub_knob_slot'),
-              right: 0,
-              top: gripTop,
-              width: _stripWidth,
-              height: gripHeight,
-              child: Semantics(
-                slider: true,
-                label: 'Document scroll slider',
-                value: label,
-                increasedValue: _scrubLabel(
-                  (_scrubbing ? _scrubFraction : _liveFraction()) + 0.05,
-                ),
-                decreasedValue: _scrubLabel(
-                  (_scrubbing ? _scrubFraction : _liveFraction()) - 0.05,
-                ),
-                onIncrease: () =>
-                    unawaited(_seek((_scrubbing
-                            ? _scrubFraction
-                            : _liveFraction()) +
-                        0.05)),
-                onDecrease: () =>
-                    unawaited(_seek((_scrubbing
-                            ? _scrubFraction
-                            : _liveFraction()) -
-                        0.05)),
-                child: GestureDetector(
-                  key: const ValueKey<String>('reader_scrub_grip'),
-                  behavior: HitTestBehavior.translucent,
-                  onVerticalDragStart: (_) => _dragStart(),
-                  onVerticalDragUpdate: (details) =>
-                      _dragUpdate(details.delta.dy),
-                  onVerticalDragEnd: (_) => _endScrub(),
-                  onVerticalDragCancel: _endScrub,
-                  child: RepaintBoundary(
-                    child: Center(
-                      child: Container(
-                        width: _knobWidth,
-                        height: _knobHeight,
-                        decoration: BoxDecoration(
-                          color: appColors.textPrimary.withValues(
-                            alpha: _scrubbing ? 1 : 0.65,
-                          ),
-                          borderRadius: BorderRadius.circular(
-                            _knobWidth / 2,
-                          ),
-                        ),
+        // Layout cache for 1:1 drag math. Not state: no setState, no rebuild.
+        _travelCache = travel;
+        // Single stable wrapper across grab/release: the ValueListenableBuilder
+        // element never remounts, so the knob's GestureDetector keeps tracking
+        // the active pointer mid-gesture. Per-pixel motion rebuilds only this
+        // small Stack (knob+pill), never the ReaderScreen, and seeks run at
+        // most once per frame (heavy seeks throttled to 80ms + trailing).
+        // NB: both slots stay keyed so inserting the pill never remounts the
+        // knob's GestureDetector mid-gesture (that would drop the tracked
+        // pointer and stick `_scrubbing` on).
+        return ValueListenableBuilder<double>(
+          valueListenable: _scrubFraction,
+          builder: (context, scrubFrac, _) {
+            final scrubbing = _scrubbing;
+            final fraction = scrubbing ? scrubFrac : _liveFraction();
+            final label = scrubbing
+                ? _scrubLabel(scrubFrac)
+                : _liveLabel();
+            final clamped = fraction.clamp(0.0, 1.0);
+            final knobY = _edgeInset + clamped * travel;
+            final pillY = (clamped * (height - _pillHeight))
+                .clamp(0.0, math.max(0.0, height - _pillHeight))
+                .toDouble();
+            final gripHeight = _knobHeight + _grabHalo * 2;
+            final gripTop = (knobY - _grabHalo)
+                .clamp(0.0, math.max(0.0, height - gripHeight))
+                .toDouble();
+            return Stack(
+              fit: StackFit.expand,
+              children: <Widget>[
+                // Readout only: appears while the knob is held and deliberately
+                // ignores all pointers — pressing it does nothing.
+                if (scrubbing)
+                  Positioned(
+                    key: const ValueKey<String>('reader_scrub_pill_slot'),
+                    right: _stripWidth + 4,
+                    top: pillY,
+                    child: IgnorePointer(
+                      child: _ScrubPill(
+                        key: const ValueKey<String>('reader_scrub_pill'),
+                        label: label,
                       ),
                     ),
+                  ),
+                // The ONLY interactive element: the small knob (plus an
+                // invisible grab halo). No taps anywhere else, no full-height
+                // strip: every other touch passes through to the document.
+                _knobSlot(
+                  gripTop: gripTop,
+                  gripHeight: gripHeight,
+                  label: label,
+                  scrubbing: scrubbing,
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Shared knob slot for both branches: identical 9x36 look, only the
+  /// alpha changes (0.65 idle / 1.0 held). Kept as a method so the two
+  /// build branches cannot drift visually.
+  Widget _knobSlot({
+    required double gripTop,
+    required double gripHeight,
+    required String label,
+    required bool scrubbing,
+  }) {
+    return Positioned(
+      key: const ValueKey<String>('reader_scrub_knob_slot'),
+      right: 0,
+      top: gripTop,
+      width: _stripWidth,
+      height: gripHeight,
+      child: Semantics(
+        slider: true,
+        label: 'Document scroll slider',
+        value: label,
+        increasedValue: _scrubLabel(
+          (scrubbing ? _scrubFraction.value : _liveFraction()) + 0.05,
+        ),
+        decreasedValue: _scrubLabel(
+          (scrubbing ? _scrubFraction.value : _liveFraction()) - 0.05,
+        ),
+        onIncrease: () => unawaited(
+          _seek(
+            (scrubbing ? _scrubFraction.value : _liveFraction()) + 0.05,
+          ),
+        ),
+        onDecrease: () => unawaited(
+          _seek(
+            (scrubbing ? _scrubFraction.value : _liveFraction()) - 0.05,
+          ),
+        ),
+        child: GestureDetector(
+          key: const ValueKey<String>('reader_scrub_grip'),
+          behavior: HitTestBehavior.translucent,
+          onVerticalDragStart: (_) => _dragStart(),
+          onVerticalDragUpdate: (details) => _dragUpdate(details.delta.dy),
+          onVerticalDragEnd: (_) => _endScrub(),
+          onVerticalDragCancel: _endScrub,
+          child: RepaintBoundary(
+            child: Center(
+              child: Container(
+                width: _knobWidth,
+                height: _knobHeight,
+                decoration: BoxDecoration(
+                  color: appColors.textPrimary.withValues(
+                    alpha: scrubbing ? 1 : 0.65,
+                  ),
+                  borderRadius: BorderRadius.circular(
+                    _knobWidth / 2,
                   ),
                 ),
               ),
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ),
     );
   }
 }
