@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/reader/logic/reader_state.dart';
@@ -84,6 +86,79 @@ void main() {
     expect(renderer.failure?.canRetry, isFalse);
   });
 
+  test('a hanging prepare fails instead of loading forever', () async {
+    final renderer = WordDocumentRenderer(
+      document: document,
+      gateway: _HangingOfficeGateway(),
+      prepareTimeout: const Duration(milliseconds: 50),
+    );
+    addTearDown(renderer.dispose);
+
+    await renderer.open();
+
+    expect(renderer.loadState, ReaderLoadState.failed);
+    expect(renderer.sourceReady, isFalse);
+    expect(renderer.failure?.message, contains('taking too long'));
+    expect(renderer.failure?.canRetry, isTrue);
+  });
+
+  test('a late session arriving after the timeout is closed, not leaked', () async {
+    final gateway = _LateOfficeGateway();
+    final renderer = WordDocumentRenderer(
+      document: document,
+      gateway: gateway,
+      prepareTimeout: const Duration(milliseconds: 50),
+    );
+    addTearDown(renderer.dispose);
+
+    await renderer.open();
+    expect(renderer.loadState, ReaderLoadState.failed);
+
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    expect(gateway.closeCount, 1);
+    expect(renderer.sourceReady, isFalse);
+  });
+
+  test('a prepared session without ready fails instead of loading forever', () async {
+    final renderer = WordDocumentRenderer(
+      document: document,
+      gateway: _FakeOfficeGateway(),
+      readyTimeout: const Duration(milliseconds: 80),
+    );
+    addTearDown(renderer.dispose);
+
+    await renderer.open();
+    expect(renderer.sourceReady, isTrue);
+    expect(renderer.loadState, ReaderLoadState.loading);
+
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(renderer.loadState, ReaderLoadState.failed);
+    expect(renderer.failure?.message, contains('did not finish loading'));
+    expect(renderer.failure?.canRetry, isTrue);
+  });
+
+  test('ready before the watchdog keeps the document open', () async {
+    final renderer = WordDocumentRenderer(
+      document: document,
+      gateway: _FakeOfficeGateway(),
+      readyTimeout: const Duration(milliseconds: 150),
+    );
+    addTearDown(renderer.dispose);
+
+    await renderer.open();
+    renderer.attachView(_FakeOfficeView(), renderer.session!.id);
+    renderer.handleViewEvent(<Object?, Object?>{
+      'type': 'ready',
+      'count': 3,
+      'hasText': false,
+    });
+    expect(renderer.loadState, ReaderLoadState.ready);
+
+    await Future<void>.delayed(const Duration(milliseconds: 250));
+    expect(renderer.loadState, ReaderLoadState.ready);
+    expect(renderer.failure, isNull);
+  });
+
   test('closing the renderer releases the native session once', () async {
     final gateway = _FakeOfficeGateway();
     final renderer = WordDocumentRenderer(document: document, gateway: gateway);
@@ -95,6 +170,22 @@ void main() {
     expect(gateway.closeCount, 1);
     expect(renderer.sourceReady, isFalse);
   });
+
+  testWidgets('dispose cancels the ready watchdog instead of leaking it', (
+    tester,
+  ) async {
+    // testWidgets fails on any timer still pending when the test ends, so this
+    // guards the 45-second watchdog against outliving a fast close.
+    final renderer = WordDocumentRenderer(
+      document: document,
+      gateway: _FakeOfficeGateway(),
+    );
+    await renderer.open();
+    expect(renderer.sourceReady, isTrue);
+
+    renderer.dispose();
+    await tester.pump();
+  });
 }
 
 class _FakeOfficeGateway implements OfficeDocumentGateway {
@@ -104,6 +195,30 @@ class _FakeOfficeGateway implements OfficeDocumentGateway {
   Future<OfficeDocumentSession> prepare(DocumentEntry document) async {
     return OfficeDocumentSession(
       id: 'office-session',
+      format: document.format,
+      sizeBytes: document.sizeBytes,
+      close: () async {
+        closeCount += 1;
+      },
+    );
+  }
+}
+
+class _HangingOfficeGateway implements OfficeDocumentGateway {
+  @override
+  Future<OfficeDocumentSession> prepare(DocumentEntry document) {
+    return Completer<OfficeDocumentSession>().future;
+  }
+}
+
+class _LateOfficeGateway implements OfficeDocumentGateway {
+  int closeCount = 0;
+
+  @override
+  Future<OfficeDocumentSession> prepare(DocumentEntry document) async {
+    await Future<void>.delayed(const Duration(milliseconds: 150));
+    return OfficeDocumentSession(
+      id: 'office-late-session',
       format: document.format,
       sizeBytes: document.sizeBytes,
       close: () async {

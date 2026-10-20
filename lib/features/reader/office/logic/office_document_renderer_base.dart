@@ -10,7 +10,27 @@ import '../data/office_document_gateway.dart';
 
 abstract class OfficeDocumentRendererBase extends ChangeNotifier
     implements DocumentRenderer {
-  OfficeDocumentRendererBase({required this.document, required this.gateway});
+  OfficeDocumentRendererBase({
+    required this.document,
+    required this.gateway,
+    Duration? prepareTimeout,
+    Duration? readyTimeout,
+  }) : _prepareTimeout = prepareTimeout ?? defaultPrepareTimeout,
+       _readyTimeout = readyTimeout ?? defaultReadyTimeout;
+
+  /// Bounds how long the native `prepareDocument` call may take. Without
+  /// this a stuck platform channel leaves the reader on "Opening
+  /// document..." forever.
+  static const Duration defaultPrepareTimeout = Duration(seconds: 20);
+
+  /// Bounds how long the native WebView may take to post `ready` after the
+  /// session exists. Vendor renderers can hang on specific files without
+  /// ever resolving or rejecting — without this the loading overlay never
+  /// goes away and retry is unreachable.
+  static const Duration defaultReadyTimeout = Duration(seconds: 45);
+
+  final Duration _prepareTimeout;
+  final Duration _readyTimeout;
 
   @override
   final DocumentEntry document;
@@ -31,10 +51,14 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
 
   OfficeDocumentSession? _session;
   OfficeViewCommands? _view;
+  Timer? _readyWatchdog;
   int _generation = 0;
   int _commandRevision = 0;
   bool _disposed = false;
   bool _viewReady = false;
+  int _seekRevision = 0;
+  bool _seekRunning = false;
+  double? _pendingSeekFraction;
 
   int currentPosition = 1;
   int positionCount = 0;
@@ -60,6 +84,7 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     }
     _commandRevision += 1;
     final generation = ++_generation;
+    _cancelReadyWatchdog();
     final previous = _session;
     _session = null;
     _view = null;
@@ -82,13 +107,34 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
       return;
     }
     try {
-      final prepared = await gateway.prepare(document);
+      final pending = gateway.prepare(document);
+      late final OfficeDocumentSession prepared;
+      try {
+        prepared = await pending.timeout(
+          _prepareTimeout,
+          onTimeout: () => throw const OfficeDocumentException(
+            OfficeDocumentFailureKind.unreadable,
+            'The Office document is taking too long to open.',
+          ),
+        );
+      } catch (_) {
+        // A native session that arrives after we already gave up must not
+        // leak: close it instead of adopting it.
+        unawaited(
+          pending.then(
+            (lateSession) => closeReaderResource(lateSession.close),
+            onError: (_) {},
+          ),
+        );
+        rethrow;
+      }
       if (_disposed || generation != _generation) {
         await closeReaderResource(prepared.close);
         return;
       }
       _session = prepared;
       notifyListeners();
+      _watchReady(generation, prepared.id);
     } on OfficeDocumentException catch (error) {
       if (!_disposed && generation == _generation) {
         _setFailure(error);
@@ -105,6 +151,37 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
         notifyListeners();
       }
     }
+  }
+
+  /// Watchdog for the native WebView `ready` event. Guarded by generation,
+  /// disposal and session identity, so a stale fire is always inert. The timer
+  /// is still cancelled on ready, close and dispose: a reader that opens and
+  /// closes quickly must not keep a 45-second timer (and this object) alive.
+  void _watchReady(int generation, String sessionId) {
+    _readyWatchdog?.cancel();
+    _readyWatchdog = Timer(_readyTimeout, () {
+      _readyWatchdog = null;
+      if (_disposed || generation != _generation) {
+        return;
+      }
+      if (loadState == ReaderLoadState.ready) {
+        return;
+      }
+      if (_session?.id != sessionId) {
+        return;
+      }
+      _setFailure(
+        const OfficeDocumentException(
+          OfficeDocumentFailureKind.unreadable,
+          'The Office renderer did not finish loading in time.',
+        ),
+      );
+    });
+  }
+
+  void _cancelReadyWatchdog() {
+    _readyWatchdog?.cancel();
+    _readyWatchdog = null;
   }
 
   void attachView(OfficeViewCommands view, String sessionId) {
@@ -128,6 +205,7 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     }
     switch (event['type']) {
       case 'ready':
+        _cancelReadyWatchdog();
         _viewReady = true;
         loadState = ReaderLoadState.ready;
         failure = null;
@@ -213,15 +291,61 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
   /// Super-fast scrub seek for the reader scrubber: jumps straight to the
   /// page closest to [fraction] without animation (same instant jump as
   /// the text/pdf scrubbers, no smooth-scroll acceleration).
+  ///
+  /// Platform-channel jumps coalesce like PDF seeks: only the latest
+  /// fraction survives a fast drag, stale channel calls never pile up.
   Future<void> seekToFraction(double fraction) {
     final view = _view;
     if (_disposed || !_viewReady || view == null || positionCount <= 1) {
       return Future<void>.value();
     }
-    final index = (fraction.clamp(0.0, 1.0) * (positionCount - 1))
-        .round()
-        .clamp(0, positionCount - 1);
-    return _runViewCommand(view, () => view.goToPositionInstant(index));
+    final target = fraction.clamp(0.0, 1.0);
+    _seekRevision++;
+    if (_seekRunning) {
+      _pendingSeekFraction = target;
+      return Future<void>.value();
+    }
+    _seekRunning = true;
+    var current = target;
+    return _drainSeeks(view, current);
+  }
+
+  Future<void> _drainSeeks(OfficeViewCommands initialView, double first) async {
+    var current = first;
+    try {
+      while (true) {
+        final revision = _seekRevision;
+        final view = _view;
+        if (_disposed || !_viewReady || view == null || positionCount <= 1) {
+          _pendingSeekFraction = null;
+          break;
+        }
+        final index = (current * (positionCount - 1))
+            .round()
+            .clamp(0, positionCount - 1);
+        final snapshot = view;
+        await _runViewCommand(snapshot, () => snapshot.goToPositionInstant(index));
+        if (_disposed) {
+          break;
+        }
+        final next = _pendingSeekFraction;
+        _pendingSeekFraction = null;
+        if (next == null && revision == _seekRevision) {
+          break;
+        }
+        if (next == null) {
+          break;
+        }
+        current = next;
+      }
+    } finally {
+      _seekRunning = false;
+      final trailing = _pendingSeekFraction;
+      _pendingSeekFraction = null;
+      if (trailing != null && !_disposed) {
+        unawaited(seekToFraction(trailing));
+      }
+    }
   }
 
   Future<void> _runViewCommand(
@@ -283,6 +407,9 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
   Future<void> close() async {
     _generation += 1;
     _commandRevision += 1;
+    _seekRevision += 1;
+    _pendingSeekFraction = null;
+    _cancelReadyWatchdog();
     _view = null;
     _viewReady = false;
     final session = _session;
@@ -297,6 +424,9 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     _disposed = true;
     _generation += 1;
     _commandRevision += 1;
+    _seekRevision += 1;
+    _pendingSeekFraction = null;
+    _cancelReadyWatchdog();
     _view = null;
     final session = _session;
     _session = null;

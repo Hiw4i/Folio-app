@@ -1,6 +1,30 @@
 (() => {
   'use strict';
 
+  // Safety net: if the boot sequence dies synchronously (e.g. a helper
+  // script failed to parse, so motion/selection factories are undefined),
+  // neither ready nor error is ever posted and the reader spins on
+  // "Opening document..." forever. Report once via the native bridge.
+  // Resource load failures (fonts, images) target their element, not the
+  // window, so they never trip this — only uncaught script errors do.
+  // Ignored after ready: a working document must not be torn down by a
+  // later unrelated exception.
+  window.FolioOfficeReady = false;
+  window.addEventListener('error', (event) => {
+    try {
+      if (window.FolioOfficeReady) return;
+      if (event && event.target !== window) return;
+      if (window.FolioBridge && typeof window.FolioBridge.postMessage === 'function') {
+        window.FolioBridge.postMessage(JSON.stringify({
+          type: 'error',
+          message: 'The document could not be rendered.',
+          recoverable: true,
+        }));
+        window.FolioOfficeReady = true;
+      }
+    } catch (_) {}
+  });
+
   const params = new URLSearchParams(window.location.search);
   const format = params.get('format') || document.body.dataset.format;
   const viewport = document.getElementById('viewport');
@@ -211,6 +235,7 @@
     }
     state.ready = true;
     state.count = count;
+    window.FolioOfficeReady = true;
     status.hidden = true;
     publishPosition(true);
     post('ready', {

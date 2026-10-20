@@ -12,6 +12,7 @@ import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebChromeClient
+import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -306,6 +307,43 @@ internal class OfficePlatformView(
                     return blockedResponse()
                 }
                 return assetLoader.shouldInterceptRequest(uri) ?: blockedResponse()
+            }
+
+            // A failed main-frame load (missing page, asset failure)
+            // would otherwise leave the reader on "Opening document..."
+            // forever: the JS boot never runs, so no ready/error is posted.
+            // Sub-frame/resource blocks (fonts, images) are ignored — the
+            // document itself can still render.
+            override fun onReceivedError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                error: WebResourceError?,
+            ) {
+                if (request?.isForMainFrame == true) {
+                    emit(
+                        mapOf(
+                            "type" to "error",
+                            "message" to "The Office document could not be displayed.",
+                            "recoverable" to true,
+                        ),
+                    )
+                }
+            }
+
+            override fun onReceivedHttpError(
+                view: WebView?,
+                request: WebResourceRequest?,
+                errorResponse: WebResourceResponse?,
+            ) {
+                if (request?.isForMainFrame == true) {
+                    emit(
+                        mapOf(
+                            "type" to "error",
+                            "message" to "The Office document could not be displayed.",
+                            "recoverable" to true,
+                        ),
+                    )
+                }
             }
 
             override fun onRenderProcessGone(
