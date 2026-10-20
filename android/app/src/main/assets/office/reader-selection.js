@@ -41,9 +41,15 @@
         let found = null;
         for (let i = rows.length - 1; i >= 0; i--) {
           const row = rows[i];
+          // A list marker hangs a word-space into the indent (an 8 px gap at a
+          // 26.9 px line in the markdown reader), so same-line fragments are
+          // joined across half their height. Table cells and columns are a full
+          // cell of padding apart and stay separate.
+          const allowance = Math.max(2, Math.min(row.bottom - row.top, height) * .5);
           if (Math.abs((row.top + row.bottom) / 2 - center)
               <= Math.min(row.bottom - row.top, height) * .35
-              && box.left <= row.right + 2 && box.right >= row.left - 2) {
+              && box.left <= row.right + allowance
+              && box.right >= row.left - allowance) {
             found = row; break;
           }
         }
@@ -60,9 +66,14 @@
         let owner = null;
         for (let i = groups.length - 1; i >= 0; i--) {
           const previous = groups[i].at(-1);
-          const height = Math.min(previous.bottom - previous.top, row.bottom - row.top);
+          const previousHeight = previous.bottom - previous.top;
+          const rowHeight = row.bottom - row.top;
           const gap = row.top - previous.bottom;
-          if (gap >= -height * .35 && gap <= Math.min(12, Math.max(2, height * .65))
+          // Compare the gap with the mean row height, not the shorter row: a
+          // heading is several times taller than a body line, and measuring by
+          // the body alone orphaned every heading from the paragraph below it.
+          if (gap >= -Math.min(previousHeight, rowHeight) * .35
+              && gap <= (previousHeight + rowHeight) / 2 * .65
               && row.left < previous.right && row.right > previous.left) {
             owner = groups[i]; break;
           }

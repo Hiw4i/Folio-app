@@ -42,11 +42,41 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   late final PdfViewerParams _params;
   bool _selectingText = false;
   bool _selectionActionRunning = false;
-  int _selectionRevision = 0;
   PdfTextSelectionRange? _selectedRange;
   final Map<int, PdfPageText> _selectedPageText = <int, PdfPageText>{};
   final Set<int> _loadingSelectedPages = <int>{};
   final Map<int, List<Rect>> _paintedSelectionRects = <int, List<Rect>>{};
+  bool _selectionRepaintScheduled = false;
+
+  /// Page text is immutable and expensive to extract. Multi-page selections
+  /// keep one entry per page and evict the oldest pages beyond this bound.
+  static const int _pageTextCacheLimit = 24;
+
+  @override
+  void dispose() {
+    // PdfViewerController has no dispose in pdfrx 2.6.1 (owned by PdfViewer
+    // while mounted): drop our selection caches so a disposed state never
+    // retains page text/rects across documents.
+    _selectedPageText.clear();
+    _loadingSelectedPages.clear();
+    _paintedSelectionRects.clear();
+    _selectedRange = null;
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(PdfDocumentView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Cached page text belongs to one document. The widget carries no key, so
+    // a renderer swap reuses this state and must not keep stale page text.
+    if (!identical(widget.renderer, oldWidget.renderer)) {
+      _selectedPageText.clear();
+      _loadingSelectedPages.clear();
+      _paintedSelectionRects.clear();
+      _selectedRange = null;
+      _selectingText = false;
+    }
+  }
 
   @override
   void initState() {
@@ -159,15 +189,43 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
 
   void _textSelectionChanged(PdfTextSelection selection) {
     _selectingText = selection.hasSelectedText;
-    _selectionRevision++;
     _selectedRange = selection.textSelectionPointRange;
-    _selectedPageText.clear();
     _paintedSelectionRects.clear();
+    _scheduleSelectionRepaint();
     final range = _selectedRange;
-    if (range != null) {
-      _selectedPageText[range.start.text.pageNumber] = range.start.text;
-      _selectedPageText[range.end.text.pageNumber] = range.end.text;
+    if (range == null) return;
+    // Keep the page text cached across drag updates. Clearing it on every
+    // change made the middle pages of a multi-page selection reload while the
+    // handles moved, and a load that finished after the next update was
+    // dropped, so those pages could stay unpainted for the whole drag.
+    _selectedPageText[range.start.text.pageNumber] = range.start.text;
+    _selectedPageText[range.end.text.pageNumber] = range.end.text;
+    if (_selectedPageText.length > _pageTextCacheLimit) {
+      final first = range.start.text.pageNumber;
+      final last = range.end.text.pageNumber;
+      _selectedPageText.removeWhere((page, _) => page < first || page > last);
+      while (_selectedPageText.length > _pageTextCacheLimit) {
+        _selectedPageText.remove(_selectedPageText.keys.first);
+      }
     }
+  }
+
+  /// pdfrx paints the page overlays from a page paint callback, and pages only
+  /// repaint on a layout/scroll event. Repainting our own widget tree does not
+  /// reach them, so the silhouette used to appear only after a small scroll.
+  /// `invalidate` pushes a fresh layout event, which repaints the pages (and
+  /// therefore the highlight) on the next frame.
+  void _scheduleSelectionRepaint() {
+    if (_selectionRepaintScheduled) return;
+    _selectionRepaintScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _selectionRepaintScheduled = false;
+      if (!mounted || !_controller.isReady) return;
+      _controller.invalidate();
+    });
+    // A released handle may be the last event of the gesture: make sure the
+    // post-frame callback actually runs instead of waiting for the next scroll.
+    WidgetsBinding.instance.ensureVisualUpdate();
   }
 
   static Widget _buildCompactMagnifier(
@@ -210,15 +268,22 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     var text = _selectedPageText[page.pageNumber];
     if (text == null) {
       if (_loadingSelectedPages.add(page.pageNumber)) {
-        final revision = _selectionRevision;
         unawaited(
           page
               .loadStructuredText()
               .then((loaded) {
                 _loadingSelectedPages.remove(page.pageNumber);
-                if (!mounted || revision != _selectionRevision) return;
+                if (!mounted) return;
+                // The extracted text belongs to the page, not to one selection,
+                // so it is stored even when the selection moved on meanwhile.
                 _selectedPageText[page.pageNumber] = loaded;
-                setState(() {});
+                final current = _selectedRange;
+                if (current == null ||
+                    page.pageNumber < current.start.text.pageNumber ||
+                    page.pageNumber > current.end.text.pageNumber) {
+                  return;
+                }
+                _scheduleSelectionRepaint();
               })
               .catchError((Object error) {
                 _loadingSelectedPages.remove(page.pageNumber);
@@ -249,7 +314,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       _paintedSelectionRects.remove(_paintedSelectionRects.keys.first);
     }
     canvas.drawPath(
-      folioSelectionPath(rects),
+      folioSelectionPath(rects, radius: folioPdfSelectionCornerRadius),
       Paint()..color = appColors.selection,
     );
   }

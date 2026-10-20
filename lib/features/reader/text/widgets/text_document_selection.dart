@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' as ui;
 
 import 'package:flutter/cupertino.dart'
     show
@@ -123,39 +124,84 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection> {
       return const <Rect>[];
     }
     final viewport = Offset.zero & paintBox.size;
-    final next = <Rect>[];
-    if (_delegate.selectsDocument) {
-      void collect(RenderObject object) {
-        if (object is RenderParagraph && object.hasSize) {
-          final transform = object.getTransformTo(paintBox);
-          final bounds = MatrixUtils.transformRect(
-            transform,
-            Offset.zero & object.size,
-          );
-          if (bounds.overlaps(viewport)) {
-            final length = object.text.toPlainText().length;
-            if (length > 0) {
-              for (final box in object.getBoxesForSelection(
-                TextSelection(baseOffset: 0, extentOffset: length),
-              )) {
-                final rect = MatrixUtils.transformRect(transform, box.toRect());
-                if (rect.overlaps(viewport) && rect.isFinite) next.add(rect);
+    final selectsDocument = _delegate.selectsDocument;
+
+    // Read the selection from the registered selectables rather than from
+    // `delegate.value`: the aggregate geometry walks a start/end fragment
+    // range and can drop every fragment when the selection begins exactly on a
+    // fragment boundary, which blanked the whole highlight.
+    final hits = <Rect>[];
+    Rect? hitBounds;
+    if (!selectsDocument) {
+      for (final selectable in _delegate.selectables) {
+        final geometry = selectable.value;
+        if (geometry.status != SelectionStatus.uncollapsed) {
+          continue;
+        }
+        final transform = selectable.getTransformTo(paintBox);
+        for (final rect in geometry.selectionRects) {
+          final hit = MatrixUtils.transformRect(transform, rect);
+          if (!hit.isFinite || hit.isEmpty || !hit.overlaps(viewport)) {
+            continue;
+          }
+          hits.add(hit);
+          hitBounds = hitBounds?.expandToInclude(hit) ?? hit;
+        }
+      }
+      if (hits.isEmpty) {
+        return const <Rect>[];
+      }
+    }
+
+    // Flutter reports glyph-tight boxes, whose height changes with the letters
+    // on the line. A reader highlight has to follow the line box instead:
+    // merging then no longer depends on which word was selected, and a heading
+    // joins the paragraph below it.
+    final rects = <Rect>[];
+    void visit(RenderObject object) {
+      if (object is RenderParagraph && object.hasSize) {
+        final transform = object.getTransformTo(paintBox);
+        final paragraphBounds = MatrixUtils.transformRect(
+          transform,
+          Offset.zero & object.size,
+        );
+        if (paragraphBounds.overlaps(viewport) &&
+            (selectsDocument ||
+                (hitBounds != null && paragraphBounds.overlaps(hitBounds)))) {
+          final length = object.text.toPlainText().length;
+          if (length > 0) {
+            for (final line in object.getBoxesForSelection(
+              TextSelection(baseOffset: 0, extentOffset: length),
+              boxHeightStyle: ui.BoxHeightStyle.strut,
+            )) {
+              final box = MatrixUtils.transformRect(transform, line.toRect());
+              if (!box.isFinite || box.isEmpty || !box.overlaps(viewport)) {
+                continue;
+              }
+              if (selectsDocument) {
+                rects.add(box);
+                continue;
+              }
+              for (final hit in hits) {
+                if (_verticalOverlap(hit, box) <= 0 ||
+                    hit.left >= box.right ||
+                    hit.right <= box.left) {
+                  continue;
+                }
+                rects.add(
+                  Rect.fromLTRB(hit.left, box.top, hit.right, box.bottom),
+                );
+                break;
               }
             }
           }
         }
-        object.visitChildren(collect);
       }
-
-      collect(containerBox);
-    } else {
-      final transform = containerBox.getTransformTo(paintBox);
-      for (final rect in _delegate.value.selectionRects) {
-        final visible = MatrixUtils.transformRect(transform, rect);
-        if (visible.overlaps(viewport) && visible.isFinite) next.add(visible);
-      }
+      object.visitChildren(visit);
     }
-    return next;
+
+    visit(containerBox);
+    return rects;
   }
 
   Future<void> _copy(SelectableRegionState region) async {
@@ -340,6 +386,14 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection> {
 
 class _SelectionVisualNotifier extends ChangeNotifier {
   void refresh() => notifyListeners();
+}
+
+/// How much of a selection's glyph box falls inside a line box. A partially
+/// scrolled line still matches the line it belongs to.
+double _verticalOverlap(Rect a, Rect b) {
+  final top = a.top > b.top ? a.top : b.top;
+  final bottom = a.bottom < b.bottom ? a.bottom : b.bottom;
+  return bottom - top;
 }
 
 /// Uses Flutter's selection engine, with one targeted cancellation policy.

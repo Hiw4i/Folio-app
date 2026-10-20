@@ -185,6 +185,50 @@ class ReaderInteractionTests(unittest.TestCase):
                 self.assertTrue(page.evaluate('FolioSelection.copyText().length>0'))
                 self.assertFalse(page.errors,page.errors)
 
+    def test_docx_heading_and_body_paint_one_silhouette(self):
+        # The heading's glyph box is 22 px tall and the body line 9 px, with an
+        # 8.6 px paragraph gap between them. Judging that gap by the shorter row
+        # allowed only 5.9 px, so the heading was painted as a separate bar.
+        page=self.load('basic.docx')
+        page.evaluate("""() => {
+          const walker=document.createTreeWalker(document.querySelector('article'),NodeFilter.SHOW_TEXT);
+          const nodes=[];
+          for(let n=walker.nextNode();n;n=walker.nextNode()) if(n.data.trim()) nodes.push(n);
+          const range=document.createRange();
+          range.setStart(nodes[0],0);range.setEnd(nodes[1],nodes[1].data.length);
+          const selected=getSelection();selected.removeAllRanges();selected.addRange(range);
+        }""")
+        page.wait_for_timeout(160)
+        path=page.evaluate("document.querySelector('#folio-selection-highlight path')?.getAttribute('d')||''")
+        self.assertTrue(path.startswith('M'),path)
+        self.assertEqual(path.count('M'),1,path)
+        self.assertFalse(page.errors,page.errors)
+
+    def test_same_line_fragments_join_across_the_list_indent(self):
+        # A list marker hangs a word-space away from its text. Fragments within
+        # half a line height now paint one silhouette; wider gaps (columns,
+        # table cells) still split. The probe pins both sides of that boundary.
+        page=self.load('basic.docx')
+        page.evaluate("""() => {
+          const host=document.querySelector('article');
+          const wrap=document.createElement('div');
+          wrap.style.cssText='position:relative;display:inline-block;font-size:14px;line-height:24px;white-space:pre';
+          wrap.innerHTML='<span id="probe-a">AA</span>'
+            +'<span id="probe-b" style="margin-left:8px">BBBB</span>'
+            +'<span id="probe-c" style="margin-left:40px">CCCC</span>';
+          host.insertBefore(wrap,host.firstChild);
+          const range=document.createRange();
+          range.setStart(document.getElementById('probe-a').firstChild,0);
+          range.setEnd(document.getElementById('probe-c').firstChild,4);
+          const selected=getSelection();selected.removeAllRanges();selected.addRange(range);
+        }""")
+        page.wait_for_timeout(160)
+        path=page.evaluate("document.querySelector('#folio-selection-highlight path')?.getAttribute('d')||''")
+        self.assertTrue(path.startswith('M'),path)
+        # The 8 px neighbours share one bar; the 40 px gap stays a second bar.
+        self.assertEqual(path.count('M'),2,path)
+        self.assertFalse(page.errors,page.errors)
+
     def test_selection_publish_never_serializes_text_or_entire_range_rects(self):
         page=self.load('basic.docx')
         page.evaluate("""() => {

@@ -13,6 +13,7 @@ import 'package:folio/features/reader/text/logic/markdown_selection_text.dart';
 import 'package:folio/features/reader/text/logic/text_document_renderer.dart';
 import 'package:folio/features/reader/text/widgets/text_document_view.dart';
 import 'package:folio/shared/selection/folio_selection_toolbar.dart';
+import 'package:folio/shared/selection/selection_visuals.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 
 final _regionFinder = find.byWidgetPredicate(
@@ -149,6 +150,178 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('MD heading and body paint a single continued silhouette', (
+    tester,
+  ) async {
+    // Runs through TextDocumentView so the app's real stylesheet is used:
+    // 17 px body with height 1.58, 30 px heading with height 1.18, 13 px
+    // block spacing. The heading used to be orphaned from its paragraph.
+    tester.view.physicalSize = const Size(420, 840);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    const source =
+        '# Chapter title\n\n'
+        'First body paragraph with words in it.\n\n'
+        'Second body paragraph with more words.';
+    final document = TextDocument(
+      text: source,
+      chunks: const <TextDocumentChunk>[
+        TextDocumentChunk(startOffset: 0, text: source),
+      ],
+      encoding: TextDocumentEncoding.utf8,
+      isMarkdown: true,
+    );
+    final renderer = TextDocumentRenderer(
+      document: DocumentEntry(
+        id: 'heading-selection',
+        source: const FileDocumentSource('/heading-test'),
+        name: 'Heading.md',
+        format: DocumentFormat.markdown,
+        sizeBytes: source.length,
+        modifiedAt: DateTime.utc(2026, 9, 19),
+      ),
+      loader: TextDocumentLoader(
+        MemoryDocumentContentSource(<String, Uint8List>{}),
+      ),
+    )
+      ..content = document
+      ..loadState = ReaderLoadState.ready;
+    final scroll = AutoScrollController();
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      scroll.dispose();
+      renderer.dispose();
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        home: Scaffold(
+          body: TextDocumentView(
+            renderer: renderer,
+            scrollController: scroll,
+            activeHitKey: GlobalKey(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final heading = tester.getRect(find.text('Chapter title'));
+    final body = tester.getRect(
+      find.text('First body paragraph with words in it.'),
+    );
+    final gesture = await tester.startGesture(
+      heading.centerLeft + const Offset(2, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveTo(body.center);
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final paint = tester.widget<CustomPaint>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.foregroundPainter is FolioSelectionHighlightPainter,
+      ),
+    );
+    final rects = (paint.foregroundPainter! as FolioSelectionHighlightPainter)
+        .visibleRects();
+    expect(rects.length, greaterThanOrEqualTo(2));
+    expect(folioSelectionPath(rects).computeMetrics().length, 1);
+    expect(tester.takeException(), isNull);
+  });
+  testWidgets('a list marker paints with its own line, not as a side bar', (
+    tester,
+  ) async {
+    // The bullet is its own text widget hanging 8 px into the indent. Joining
+    // fragments only within 2 px painted it as a separate strip beside the item
+    // text, and consecutive bullets merged into one long bar at the margin.
+    tester.view.physicalSize = const Size(420, 840);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    const source =
+        '- First list item with words in it\n'
+        '- Second list item with more words\n';
+    final document = TextDocument(
+      text: source,
+      chunks: const <TextDocumentChunk>[
+        TextDocumentChunk(startOffset: 0, text: source),
+      ],
+      encoding: TextDocumentEncoding.utf8,
+      isMarkdown: true,
+    );
+    final renderer = TextDocumentRenderer(
+      document: DocumentEntry(
+        id: 'list-selection',
+        source: const FileDocumentSource('/list-test'),
+        name: 'List.md',
+        format: DocumentFormat.markdown,
+        sizeBytes: source.length,
+        modifiedAt: DateTime.utc(2026, 9, 19),
+      ),
+      loader: TextDocumentLoader(
+        MemoryDocumentContentSource(<String, Uint8List>{}),
+      ),
+    )
+      ..content = document
+      ..loadState = ReaderLoadState.ready;
+    final scroll = AutoScrollController();
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox.shrink());
+      scroll.dispose();
+      renderer.dispose();
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: ThemeData(platform: TargetPlatform.android),
+        home: Scaffold(
+          body: TextDocumentView(
+            renderer: renderer,
+            scrollController: scroll,
+            activeHitKey: GlobalKey(),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final marker = tester.getRect(find.text('•').first);
+    final item = tester.getRect(find.text('First list item with words in it'));
+    expect(marker.right, lessThan(item.left));
+    final gesture = await tester.startGesture(
+      marker.centerLeft + const Offset(1, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveTo(item.center);
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final paint = tester.widget<CustomPaint>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.foregroundPainter is FolioSelectionHighlightPainter,
+      ),
+    );
+    final rects = (paint.foregroundPainter! as FolioSelectionHighlightPainter)
+        .visibleRects();
+    expect(rects, isNotEmpty);
+    // A point in the gap between the bullet and its text: only reachable when
+    // the marker and the line were joined into one silhouette.
+    final seam = Offset((marker.right + item.left) / 2, marker.center.dy);
+    expect(
+      folioSelectionPath(rects).contains(seam),
+      isTrue,
+      reason: 'the marker must be part of its line',
+    );
+    expect(tester.takeException(), isNull);
+  });
 }
 
 bool _canCopy(WidgetTester tester) => tester

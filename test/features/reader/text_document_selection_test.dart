@@ -237,4 +237,84 @@ void main() {
     expect(value, contains('A\tB'));
     expect(value, contains('X\tY'));
   });
+
+  List<Rect> highlightRects(WidgetTester tester) {
+    final highlight = tester.widget<CustomPaint>(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.foregroundPainter is FolioSelectionHighlightPainter,
+      ),
+    );
+    return (highlight.foregroundPainter! as FolioSelectionHighlightPainter)
+        .visibleRects();
+  }
+
+  Future<List<Rect>> dragAcross(
+    WidgetTester tester, {
+    required String from,
+    required String to,
+  }) async {
+    final start = tester.getRect(find.text(from).first);
+    final end = tester.getRect(find.text(to).first);
+    final gesture = await tester.startGesture(
+      start.centerLeft + const Offset(2, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveTo(end.center);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    return highlightRects(tester);
+  }
+
+  testWidgets('a selected heading shares one silhouette with its body', (
+    tester,
+  ) async {
+    const source =
+        '# Chapter title\n\nFirst body paragraph with words in it.\n\n'
+        'Second body paragraph with more words.';
+    await pumpSelection(
+      tester,
+      source: document(source, markdown: true),
+      child: const SingleChildScrollView(
+        padding: EdgeInsets.all(40),
+        child: MarkdownBody(data: source, selectable: false),
+      ),
+    );
+    final rects = await dragAcross(
+      tester,
+      from: 'Chapter title',
+      to: 'First body paragraph with words in it.',
+    );
+    expect(rects.length, greaterThanOrEqualTo(2));
+    expect(folioSelectionPath(rects).computeMetrics().length, 1);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('highlight height ignores which letters the line contains', (
+    tester,
+  ) async {
+    // Descenders used to make a selected line taller, so the same paragraph
+    // merged or split depending on the words the drag happened to cover.
+    const source = 'The sun goes up\n\nA gypsy jumping down\n\nThe end of it';
+    await pumpSelection(
+      tester,
+      source: document(source, markdown: true),
+      child: const SingleChildScrollView(
+        padding: EdgeInsets.all(40),
+        child: MarkdownBody(data: source, selectable: false),
+      ),
+    );
+    final rects = await dragAcross(
+      tester,
+      from: 'The sun goes up',
+      to: 'A gypsy jumping down',
+    );
+    expect(rects.length, greaterThanOrEqualTo(2));
+    for (final rect in rects) {
+      expect(rect.height, closeTo(rects.first.height, 0.5));
+    }
+    expect(folioSelectionPath(rects).computeMetrics().length, 1);
+    expect(tester.takeException(), isNull);
+  });
 }
