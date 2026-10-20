@@ -5,6 +5,8 @@ import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
 
+import '../support/memory_settings_store.dart';
+
 void main() {
   setUpAll(() async {
     final inter = FontLoader('Inter')
@@ -17,7 +19,10 @@ void main() {
     addTearDown(() => tester.binding.setSurfaceSize(null));
 
     await tester.pumpWidget(
-      FolioApp(libraryRepository: InMemoryLibraryRepository.demo()),
+      FolioApp(
+        settingsStore: MemorySettingsStore(),
+        libraryRepository: InMemoryLibraryRepository.demo(),
+      ),
     );
     await tester.pumpAndSettle();
     final surface = find.byKey(const ValueKey<String>('folio_surface'));

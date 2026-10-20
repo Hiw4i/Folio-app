@@ -10,6 +10,7 @@ import 'package:folio/shared/glass/surface/glass_shell.dart';
 import 'package:folio/shared/settings/folio_settings.dart';
 import 'package:folio/shared/settings/folio_settings_controller.dart';
 import 'package:folio/shared/settings/folio_settings_scope.dart';
+import 'package:folio/shared/theme/app_spacing.dart';
 import 'package:folio/shared/widgets/folio_sheet_content.dart';
 
 import '../../support/memory_settings_store.dart';
@@ -38,11 +39,13 @@ void main() {
         expect(find.byType(FolioSheetSectionHeader), findsWidgets);
         expect(find.byType(FolioSheetCard), findsWidgets);
         expect(find.byType(FolioSheetDivider), findsWidgets);
-        expect(tester.widget<GlassPanel>(_surface).borderRadius, 32);
-        expect(tester.widget<GlassPanel>(_surface).liquidMotion, isTrue);
+        expect(tester.widget<GlassPanel>(_surface).borderRadius, 28);
+        // The shared sheet is a static panel: its fill stays readable over
+        // text and the cards themselves never deform.
+        expect(tester.widget<GlassPanel>(_surface).liquidMotion, isFalse);
         expect(
           find.descendant(of: _surface, matching: find.byType(GlassShell)),
-          findsOneWidget,
+          findsNothing,
         );
         final rect = tester.getRect(_surface);
         expect(rect.left, 16);
@@ -55,7 +58,7 @@ void main() {
             matching: find.byType(SingleChildScrollView),
           ),
         );
-        expect(scroll.padding, const EdgeInsets.fromLTRB(24, 12, 24, 24));
+        expect(scroll.padding, AppSpacing.sheetPadding);
         final title = tester.widget<Text>(
           find.text(sheet == _Sheet.settings ? 'SETTINGS' : 'FILE INFO'),
         );
@@ -206,16 +209,12 @@ void main() {
         }
       });
 
-      testWidgets('liquid shell responds without moving its inner cards', (
+      testWidgets('static surface keeps its cards fixed and still dismisses', (
         tester,
       ) async {
         final settings = await _pumpHost(tester, sheet);
         await _open(tester);
         await tester.pumpAndSettle();
-        final shell = find.descendant(
-          of: _surface,
-          matching: find.byType(GlassShell),
-        );
         final card = find.byType(FolioSheetCard).first;
         final element = tester.element(card);
         final cardRect = tester.getRect(card);
@@ -225,15 +224,13 @@ void main() {
         );
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 80));
-        // A horizontal pull exercises shell physics without dismissing vertically.
+        // A horizontal pull exercises the press path without dismissing.
         await gesture.moveBy(const Offset(40, 0));
         await tester.pump(const Duration(milliseconds: 80));
-        expect(tester.widget<GlassShell>(shell).press, greaterThan(0));
         expect(tester.getRect(card), cardRect);
         expect(tester.element(card), same(element));
         settings.setLiquidMotionEnabled(false);
         await tester.pumpAndSettle();
-        expect(tester.widget<GlassShell>(shell).press, 0);
         expect(tester.element(card), same(element));
         await gesture.up();
         await tester.pumpAndSettle();
@@ -357,13 +354,14 @@ void _expectBackdrop(
 }) {
   final t = Curves.easeOut.transform((raw / 0.5).clamp(0.0, 1.0));
   final filter = tester.widget<BackdropFilter>(_backdrop);
-  expect(filter.enabled, blurEnabled && t > 0);
+  final blurActive = blurEnabled && t > 0;
+  expect(filter.enabled, blurActive);
+  // Blur is quantized to 20 shared filters (0.6 sigma per step); mirror it.
+  final step = (t * 20).round().clamp(0, 20);
+  final sigma = blurActive ? 12.0 * step / 20 : 12.0;
   expect(
     filter.filter,
-    ui.ImageFilter.blur(
-      sigmaX: blurEnabled && t > 0 && t < 1 ? 12 * t : 12,
-      sigmaY: blurEnabled && t > 0 && t < 1 ? 12 * t : 12,
-    ),
+    ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
   );
   final color = tester.widget<ColoredBox>(
     find.descendant(of: _backdrop, matching: find.byType(ColoredBox)).first,

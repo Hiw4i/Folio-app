@@ -15,6 +15,8 @@ import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
 import 'package:folio/shared/theme/folio_theme.dart';
 import 'package:folio/shared/widgets/folio_sheet_content.dart';
 
+import '../../support/memory_settings_store.dart';
+
 void main() {
   const path = '/documents/notes.txt';
   final document = DocumentEntry(
@@ -29,6 +31,7 @@ void main() {
   Future<void> openReader(WidgetTester tester) async {
     await tester.pumpWidget(
       FolioApp(
+        settingsStore: MemorySettingsStore(),
         libraryRepository: InMemoryLibraryRepository(
           documents: <DocumentEntry>[document],
         ),
@@ -162,6 +165,7 @@ void main() {
 
     await tester.pumpWidget(
       FolioApp(
+        settingsStore: MemorySettingsStore(),
         libraryRepository: InMemoryLibraryRepository(
           documents: <DocumentEntry>[longDocument],
         ),
@@ -552,6 +556,7 @@ void main() {
     );
     await tester.pumpWidget(
       FolioApp(
+        settingsStore: MemorySettingsStore(),
         libraryRepository: InMemoryLibraryRepository(
           documents: <DocumentEntry>[markdownDocument],
         ),

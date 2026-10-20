@@ -9,6 +9,8 @@ import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
 import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
 
+import '../support/memory_settings_store.dart';
+
 void main() {
   setUpAll(() async {
     final inter = FontLoader('Inter')
@@ -30,6 +32,7 @@ void main() {
     );
     await tester.pumpWidget(
       FolioApp(
+        settingsStore: MemorySettingsStore(),
         libraryRepository: InMemoryLibraryRepository(
           documents: <DocumentEntry>[document],
         ),

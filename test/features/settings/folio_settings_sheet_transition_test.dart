@@ -17,7 +17,7 @@ final _backdrop = find.byKey(const ValueKey<String>('folio_sheet_backdrop'));
 final _position = find.byKey(const ValueKey<String>('folio_sheet_position'));
 
 void main() {
-  testWidgets('settings use a floating surface with four 32px corners', (
+  testWidgets('settings use a floating surface with four 28px corners', (
     tester,
   ) async {
     await _pumpHost(tester);
@@ -29,14 +29,14 @@ void main() {
     expect(rect.right, 384);
     expect(rect.bottom, 824);
     expect(rect.height, lessThan(840 * 0.85));
-    expect(tester.widget<GlassPanel>(_surface).borderRadius, 32);
+    expect(tester.widget<GlassPanel>(_surface).borderRadius, 28);
     final clip = find.descendant(
       of: _surface,
       matching: find.byType(ClipRRect),
     );
     expect(
       tester.widget<ClipRRect>(clip).borderRadius,
-      BorderRadius.circular(32),
+      BorderRadius.circular(28),
     );
     expect(find.byType(DraggableScrollableSheet), findsNothing);
     expect(tester.takeException(), isNull);
@@ -213,8 +213,10 @@ void main() {
         await _open(tester);
         await tester.pumpAndSettle();
         final rect = tester.getRect(_surface);
-        expect(rect.width, 640); // The original Folio width limit is retained.
-        expect(rect.center.dx, size.width / 2);
+        // Wide screens get the compact panel docked bottom-right; the 400px
+        // cap is the Folio sheet width on tablets and landscape phones.
+        expect(rect.width, 400);
+        expect(rect.right, size.width - 16);
         expect(rect.bottom, size.height - 16);
         expect(rect.height, lessThanOrEqualTo(size.height * 0.85));
         expect(find.byType(Dialog), findsNothing);
@@ -459,8 +461,16 @@ void _expectBackdrop(
 }) {
   final t = Curves.easeOut.transform((raw / 0.5).clamp(0.0, 1.0));
   final filter = tester.widget<BackdropFilter>(_backdrop);
-  expect(filter.enabled, blurEnabled && t > 0);
-  final sigma = blurEnabled && t > 0 && t < 1 ? 12 * t : 12.0;
+  final blurActive = blurEnabled && t > 0;
+  expect(filter.enabled, blurActive);
+  // The route shares one of 20 quantized filters per animation step; the
+  // expectation must use the same 0.6-sigma grid instead of the raw `12 * t`.
+  final step = (t * 20).round().clamp(0, 20);
+  final sigma = blurActive ? 12.0 * step / 20 : 12.0;
   expect(filter.filter, ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma));
-  expect((filter.child! as ColoredBox).color.a, closeTo(0.3 * t, 0.00001));
+  // Without backdrop blur the scrim is doubled so the sheet keeps its depth.
+  expect(
+    (filter.child! as ColoredBox).color.a,
+    closeTo((blurEnabled ? 0.3 : 0.6) * t, 0.00001),
+  );
 }
