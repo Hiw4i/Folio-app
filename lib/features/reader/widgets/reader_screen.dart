@@ -978,6 +978,11 @@ class _ReaderBody extends StatelessWidget {
 /// Office staged reveal: the platform view stays mounted at opacity 0 while
 /// rendering (warming under the Flutter loader), then crossfades with the
 /// loader overlay instead of swapping to the WebView's own status text.
+///
+/// While at opacity 0 the platform view is not painted, so its Android view is
+/// not attached to a window yet. Native events must therefore be delivered
+/// independently of window attachment (see `OfficePlatformView.emit`), or the
+/// `ready` handshake would deadlock.
 class _OfficeStagedView extends StatefulWidget {
   const _OfficeStagedView({required this.renderer, required this.view});
 

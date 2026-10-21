@@ -8,6 +8,8 @@ import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.RenderProcessGoneDetail
@@ -51,6 +53,7 @@ internal class OfficePlatformView(
 ) : PlatformView {
     private val viewContext = context
     private val channel = MethodChannel(messenger, "folio/office_view/$viewId")
+    private val mainHandler = Handler(Looper.getMainLooper())
     private var disposed = false
     private var started = false
     private val webView = OfficeSelectionWebView(context)
@@ -194,7 +197,12 @@ internal class OfficePlatformView(
     }
 
     private fun emit(event: Map<String, Any?>) {
-        webView.post {
+        // WebView.post() defers its runnables until the view is attached to a
+        // window. The reader intentionally keeps this view un-displayed until
+        // the first `ready` event arrives, so posting through the WebView
+        // would deadlock the handshake. Method-channel events only need the
+        // main thread, not window attachment.
+        mainHandler.post {
             if (!disposed) channel.invokeMethod("event", event)
         }
     }
