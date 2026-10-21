@@ -4,9 +4,9 @@ import '../../../shared/glass/surface/liquid_surface.dart';
 
 /// Shared show/hide spec for every reader control.
 ///
-/// One [AnimationController] (owned by `ReaderScreen`) drives all five
-/// controls as a single whole: top bar, progress pill, bottom search,
-/// morphing menu and search navigator. Pixel offsets keep the travel short
+/// One [AnimationController] (owned by `ReaderScreen`) drives all six
+/// controls as a single whole: top bar, exit control, progress pill, bottom
+/// search, morphing menu and search navigator. Pixel offsets keep the travel short
 /// (iOS-style nudge + fade) so hidden controls leave the screen fast and,
 /// once dismissed, are fully unmounted — no `BackdropFilter` cost while
 /// reading.

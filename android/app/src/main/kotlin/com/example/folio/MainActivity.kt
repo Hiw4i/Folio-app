@@ -38,7 +38,8 @@ class MainActivity : FlutterActivity() {
     }
 
     private var eventSink: EventChannel.EventSink? = null
-    private var queuedIncoming: Map<String, Any?>? = null
+    private val queuedIncoming = mutableListOf<Map<String, Any?>>()
+    private var initialIntent: Intent? = null
     private var initialIntentConsumed = false
     private var documentAccessResult: MethodChannel.Result? = null
     private val pdfSessions = ConcurrentHashMap<String, PdfSourceSession>()
@@ -50,6 +51,10 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
+        // Keep the cold-launch intent separate from onNewIntent's setIntent.
+        // A warm intent arriving during startup must not replace the document
+        // the probe is about to claim, and it must not be delivered twice.
+        if (initialIntent == null) initialIntent = intent
         officeDocuments = OfficeDocumentManager(this, documentIoExecutor)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, OFFICE_CHANNEL)
             .setMethodCallHandler(officeDocuments::handle)
@@ -108,7 +113,7 @@ class MainActivity : FlutterActivity() {
                             result.success(null)
                         } else {
                             initialIntentConsumed = true
-                            result.success(documentFromIntent(intent))
+                            result.success(documentFromIntent(initialIntent))
                         }
                     }
                     "requestDocumentAccess" -> {
@@ -140,9 +145,8 @@ class MainActivity : FlutterActivity() {
             .setStreamHandler(object : EventChannel.StreamHandler {
                 override fun onListen(arguments: Any?, events: EventChannel.EventSink) {
                     eventSink = events
-                    queuedIncoming?.let {
-                        events.success(it)
-                        queuedIncoming = null
+                    while (queuedIncoming.isNotEmpty()) {
+                        events.success(queuedIncoming.removeAt(0))
                     }
                 }
 
@@ -168,7 +172,12 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val incoming = documentFromIntent(intent) ?: return
-        eventSink?.success(incoming) ?: run { queuedIncoming = incoming }
+        val sink = eventSink
+        if (sink != null) {
+            sink.success(incoming)
+        } else {
+            queuedIncoming.add(incoming)
+        }
     }
 
     @Deprecated("Deprecated in Android, retained for FlutterActivity result forwarding")

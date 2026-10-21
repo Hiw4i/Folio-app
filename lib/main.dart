@@ -10,10 +10,11 @@ import 'package:flutter/material.dart'
         TextSelectionTheme,
         TextSelectionThemeData;
 
+import 'app/folio_root.dart';
+import 'features/library/data/document_entry.dart';
 import 'features/library/data/file_library_repository.dart';
 import 'features/library/data/library_repository.dart';
 import 'features/library/logic/library_controller.dart';
-import 'features/library/widgets/library_screen.dart';
 import 'features/reader/data/document_content_source.dart';
 import 'shared/android/android_storage_gateway.dart';
 import 'shared/glass/widgets/adaptive_glass_foreground.dart';
@@ -56,6 +57,9 @@ class FolioApp extends StatefulWidget {
 class _FolioAppState extends State<FolioApp> {
   late final LibraryController _libraryController;
   late final FolioSettingsController _settingsController;
+  late final DocumentContentSource _documentContentSource;
+  bool _launchResolved = false;
+  DocumentEntry? _initialExternalDocument;
 
   @override
   void initState() {
@@ -65,11 +69,32 @@ class _FolioAppState extends State<FolioApp> {
       store: widget.settingsStore ?? FileFolioSettingsStore(),
     );
     unawaited(_settingsController.load());
+    _documentContentSource =
+        widget.documentContentSource ?? const DeviceDocumentContentSource();
     _libraryController = LibraryController(
       repository:
           widget.libraryRepository ??
           FileLibraryRepository(storageGateway: AndroidStorageGateway()),
     );
+    unawaited(_resolveLaunchDocument());
+  }
+
+  Future<void> _resolveLaunchDocument() async {
+    try {
+      await _libraryController.probeLaunchDocument();
+    } catch (error) {
+      // A malformed launch intent must never block the library.
+      debugPrint('Folio launch probe failed: $error');
+    }
+    if (!mounted) {
+      return;
+    }
+    final external = _libraryController.pendingDocumentIsExternal;
+    final document = external ? _libraryController.takePendingDocument() : null;
+    setState(() {
+      _initialExternalDocument = document;
+      _launchResolved = true;
+    });
   }
 
   @override
@@ -121,13 +146,26 @@ class _FolioAppState extends State<FolioApp> {
             ),
           );
         },
-        home: LibraryScreen(
-          controller: _libraryController,
-          documentContentSource:
-              widget.documentContentSource ??
-              const DeviceDocumentContentSource(),
-        ),
+        home: _launchResolved
+            ? FolioRoot(
+                controller: _libraryController,
+                documentContentSource: _documentContentSource,
+                initialExternalDocument: _initialExternalDocument,
+              )
+            : const _LaunchCover(),
       ),
+    );
+  }
+}
+
+class _LaunchCover extends StatelessWidget {
+  const _LaunchCover();
+
+  @override
+  Widget build(BuildContext context) {
+    return ColoredBox(
+      key: const ValueKey<String>('folio_launch_cover'),
+      color: appColors.background,
     );
   }
 }

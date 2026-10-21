@@ -13,7 +13,7 @@ void main() {
     await tester.pumpWidget(
       FolioApp(libraryRepository: InMemoryLibraryRepository.demo()),
     );
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Folio'), findsOneWidget);
     expect(find.byType(ScrollEdgeFade), findsOneWidget);

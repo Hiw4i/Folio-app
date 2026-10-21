@@ -311,7 +311,7 @@ Future<void> _tapContent(WidgetTester tester, DocumentFormat format) async {
 
 void _expectChrome(WidgetTester tester, bool visible) {
   final shells = tester.widgetList<ReaderChromeShell>(find.byType(ReaderChromeShell));
-  expect(shells, hasLength(5));
+  expect(shells, hasLength(6));
   for (final shell in shells) {
     expect(shell.progress.value, visible ? 1 : 0);
   }

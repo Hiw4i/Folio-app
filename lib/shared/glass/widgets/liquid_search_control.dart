@@ -20,6 +20,7 @@ class LiquidSearchControl extends StatefulWidget {
     this.semanticsLabel = 'Search',
     this.onSubmitted,
     this.onExpansionChanged,
+    this.active = true,
     super.key,
   });
 
@@ -29,6 +30,11 @@ class LiquidSearchControl extends StatefulWidget {
   final String semanticsLabel;
   final ValueChanged<String>? onSubmitted;
   final ValueChanged<bool>? onExpansionChanged;
+
+  /// When false, the control keeps its visual state but no longer claims the
+  /// system Back gesture or requests input focus. Used while a covering reader
+  /// owns navigation; the owning screen restores [active] on return.
+  final bool active;
 
   @override
   State<LiquidSearchControl> createState() => LiquidSearchControlState();
@@ -75,6 +81,20 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
   }
 
   @override
+  void didUpdateWidget(LiquidSearchControl oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.active && !widget.active) {
+      _keyboardRetry?.cancel();
+      _focusRequested = false;
+      _searchFocus.unfocus();
+      _cancelFocus.unfocus();
+      if (defaultTargetPlatform == TargetPlatform.windows) {
+        _mainFocus.unfocus();
+      }
+    }
+  }
+
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
     _motion.setLiquidMotionEnabled(
@@ -118,16 +138,20 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
       _reportedExpanded = _motion.wantsOpen;
       widget.onExpansionChanged?.call(_reportedExpanded);
     }
-    if (_motion.wantsOpen && _motion.morph > 0.94 && !_focusRequested) {
+    if (widget.active &&
+        _motion.wantsOpen &&
+        _motion.morph > 0.94 &&
+        !_focusRequested) {
       _focusRequested = true;
       _wasExpanded = true;
       _requestInputFocus();
     }
-    if (!_motion.wantsOpen && _motion.morph < 0.62 && _focusRequested) {
+    if (_focusRequested &&
+        (!widget.active || (!_motion.wantsOpen && _motion.morph < 0.62))) {
       _focusRequested = false;
       _searchFocus.unfocus();
       _cancelFocus.unfocus();
-      if (defaultTargetPlatform == TargetPlatform.windows) {
+      if (widget.active && defaultTargetPlatform == TargetPlatform.windows) {
         _mainFocus.requestFocus();
       }
     }
@@ -140,7 +164,7 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
   }
 
   void _requestInputFocus() {
-    if (!_motion.wantsOpen || !mounted) {
+    if (!widget.active || !_motion.wantsOpen || !mounted) {
       return;
     }
     _searchFocus.requestFocus();
@@ -158,7 +182,10 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
   }
 
   void _showKeyboardIfReady() {
-    if (!mounted || !_motion.wantsOpen || !_searchFocus.hasFocus) {
+    if (!widget.active ||
+        !mounted ||
+        !_motion.wantsOpen ||
+        !_searchFocus.hasFocus) {
       return;
     }
     _editableKey.currentState?.requestKeyboard();
@@ -211,9 +238,9 @@ class LiquidSearchControlState extends State<LiquidSearchControl>
           builder: (context, child) {
             final collapsed = !_motion.wantsOpen && _motion.morph < 0.02;
             return PopScope<void>(
-              canPop: collapsed,
+              canPop: !widget.active || collapsed,
               onPopInvokedWithResult: (didPop, result) {
-                if (!didPop && !collapsed) {
+                if (!didPop && widget.active && !collapsed) {
                   handleBack();
                 }
               },

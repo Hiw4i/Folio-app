@@ -148,7 +148,25 @@ class FileLibraryRepository implements LibraryRepository {
   Future<DocumentEntry?> consumeInitialDocument() async {
     try {
       final incoming = await storageGateway.consumeInitialDocument();
-      return incoming == null ? null : await _registerIncoming(incoming);
+      if (incoming == null || _disposed) {
+        return null;
+      }
+      final document = _entryFromIncoming(incoming);
+      if (document == null) {
+        return null;
+      }
+      final previous = _documents[document.id];
+      final registered = document.copyWith(
+        createdAt: previous?.createdAt ?? document.createdAt,
+        lastOpenedAt: _now(),
+        isAvailable: true,
+      );
+      _documents[registered.id] = registered;
+      // Catalog hydration and persistence must never delay the first reader.
+      // The background pass merges the disk cache before writing so a cold
+      // launch cannot replace the rest of the catalog with this one entry.
+      unawaited(_registerIncoming(incoming));
+      return registered;
     } catch (_) {
       return null;
     }
@@ -298,6 +316,21 @@ class FileLibraryRepository implements LibraryRepository {
       return restored;
     } catch (_) {
       return const <DocumentEntry>[];
+    }
+  }
+
+  /// Waits until every queued catalog write has reached disk.
+  ///
+  /// Background registration deliberately outlives the first reader. Tests use
+  /// this hook to inspect the cache without racing that merge.
+  @visibleForTesting
+  Future<void> flushCacheWrites() async {
+    while (true) {
+      final write = _writeQueue;
+      if (write == null) {
+        return;
+      }
+      await write;
     }
   }
 

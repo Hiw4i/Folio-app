@@ -41,11 +41,13 @@ class LibraryController extends ChangeNotifier {
   bool _isRefreshing = false;
   bool _refreshFailed = false;
   DocumentEntry? _pendingDocument;
+  bool _pendingDocumentIsExternal = false;
   DocumentEntry? _unavailableDocument;
   StreamSubscription<LibrarySnapshot>? _refreshSubscription;
   StreamSubscription<DocumentEntry>? _incomingSubscription;
   Completer<void>? _refreshCompleter;
   Future<void>? _loadFuture;
+  Future<void>? _launchProbe;
   Future<void>? _refreshFuture;
   int _recoveryRevision = 0;
 
@@ -65,6 +67,7 @@ class LibraryController extends ChangeNotifier {
   bool get isRefreshing => _isRefreshing;
   bool get refreshFailed => _refreshFailed;
   DocumentEntry? get pendingDocument => _pendingDocument;
+  bool get pendingDocumentIsExternal => _pendingDocumentIsExternal;
   DocumentEntry? get unavailableDocument => _unavailableDocument;
 
   List<DocumentEntry> get matches {
@@ -144,10 +147,43 @@ class LibraryController extends ChangeNotifier {
     return _loadFuture ??= _load().whenComplete(() => _loadFuture = null);
   }
 
+  /// Resolves the cold-launch intent without waiting for the catalog. The app
+  /// calls this before its first frame so an externally opened document can
+  /// start rendering immediately; [load] joins the same future.
+  Future<void> probeLaunchDocument() {
+    if (_disposed) {
+      return Future<void>.value();
+    }
+    return _launchProbe ??= _probeLaunchDocument();
+  }
+
+  Future<void> _probeLaunchDocument() async {
+    try {
+      final initialDocument = await repository.consumeInitialDocument();
+      if (_disposed || initialDocument == null) {
+        return;
+      }
+      _upsert(initialDocument);
+      _pendingDocument = initialDocument;
+      _pendingDocumentIsExternal = true;
+      _notify();
+    } catch (error) {
+      // A failed launch intent must not hide an otherwise valid catalog.
+      debugPrint('Folio launch document unavailable: $error');
+    }
+  }
+
   Future<void> _load() async {
     _loadState = LibraryLoadState.loading;
     _notify();
     try {
+      await probeLaunchDocument();
+      if (_disposed) {
+        return;
+      }
+      // Subscribe before the catalog can fail: a warm intent must still reach
+      // the library even when the saved catalog cannot be restored.
+      _listenForIncomingDocuments();
       final snapshot = await repository.load();
       if (_disposed) {
         return;
@@ -155,20 +191,6 @@ class LibraryController extends ChangeNotifier {
       _replaceDocuments(snapshot.documents);
       _access = snapshot.access;
       _loadState = LibraryLoadState.ready;
-      _listenForIncomingDocuments();
-      try {
-        final initialDocument = await repository.consumeInitialDocument();
-        if (_disposed) {
-          return;
-        }
-        if (initialDocument != null) {
-          _upsert(initialDocument);
-          _pendingDocument = initialDocument;
-        }
-      } catch (error) {
-        // A failed launch intent must not hide an otherwise valid catalog.
-        debugPrint('Folio launch document unavailable: $error');
-      }
     } catch (error) {
       if (_disposed) {
         return;
@@ -277,6 +299,7 @@ class LibraryController extends ChangeNotifier {
       return;
     }
     _pendingDocument = updated;
+    _pendingDocumentIsExternal = false;
     _notify();
   }
 
@@ -309,6 +332,7 @@ class LibraryController extends ChangeNotifier {
   DocumentEntry? takePendingDocument() {
     final pending = _pendingDocument;
     _pendingDocument = null;
+    _pendingDocumentIsExternal = false;
     return pending;
   }
 
@@ -336,6 +360,7 @@ class LibraryController extends ChangeNotifier {
         _replaceDocuments(_documents.where((item) => item.id != document.id));
         _upsert(recovered);
         _pendingDocument = recovered;
+        _pendingDocumentIsExternal = false;
       }
       _unavailableDocument = null;
       _notify();
@@ -390,6 +415,7 @@ class LibraryController extends ChangeNotifier {
         }
         _upsert(document);
         _pendingDocument = document;
+        _pendingDocumentIsExternal = true;
         _notify();
       },
       onError: (Object error, StackTrace stack) {

@@ -227,7 +227,11 @@ class GlassMotionController extends LiquidMotionController {
     _wake();
   }
 
-  void endPointer({required Offset position, required Duration timestamp}) {
+  void endPointer({
+    required Offset position,
+    required Duration timestamp,
+    bool openOnTap = true,
+  }) {
     if (!_pointerDown) {
       return;
     }
@@ -241,7 +245,10 @@ class GlassMotionController extends LiquidMotionController {
 
     if (wasTap && target == GlassPointerTarget.cancel && separation > 0.82) {
       requestClose();
-    } else if (wasTap && target == GlassPointerTarget.main && morphEnabled) {
+    } else if (wasTap &&
+        target == GlassPointerTarget.main &&
+        morphEnabled &&
+        openOnTap) {
       if (!_wantsOpen || state == GlassInteractionState.closing) {
         requestOpen();
       }

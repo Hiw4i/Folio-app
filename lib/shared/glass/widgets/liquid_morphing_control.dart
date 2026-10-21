@@ -40,6 +40,7 @@ class LiquidMorphingControl extends StatefulWidget {
     required this.collapsedSemanticsLabel,
     this.expandedSemanticsLabel,
     this.collapsedHitKey,
+    this.onCollapsedTap,
     this.onExpansionChanged,
     this.hitSlop = 8,
     super.key,
@@ -51,6 +52,10 @@ class LiquidMorphingControl extends StatefulWidget {
   final String collapsedSemanticsLabel;
   final String? expandedSemanticsLabel;
   final Key? collapsedHitKey;
+
+  /// Runs on a short tap while collapsed. When null, a tap expands the
+  /// control. A long press always expands it.
+  final VoidCallback? onCollapsedTap;
   final ValueChanged<bool>? onExpansionChanged;
   final double hitSlop;
 
@@ -236,6 +241,10 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                     _motion.endPointer(
                       position: event.localPosition,
                       timestamp: event.timeStamp,
+                      // A primary-tap control decides on release in its own
+                      // gesture recognizer; the raw glass pointer must not
+                      // expand it first.
+                      openOnTap: widget.onCollapsedTap == null,
                     );
                     _pointer = null;
                   }
@@ -336,13 +345,15 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                           behavior: HitTestBehavior.opaque,
                           onTap: () {
                             if (!_motion.wantsOpen) {
-                              open();
+                              (widget.onCollapsedTap ?? open)();
                             }
                           },
+                          onLongPress: open,
                           child: Semantics(
                             button: true,
                             label: widget.collapsedSemanticsLabel,
-                            onTap: open,
+                            onTap: widget.onCollapsedTap ?? open,
+                            onLongPress: open,
                             child: Focus(
                               focusNode: _focus,
                               onKeyEvent: (node, event) {
@@ -351,7 +362,7 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                                             LogicalKeyboardKey.enter ||
                                         event.logicalKey ==
                                             LogicalKeyboardKey.space)) {
-                                  open();
+                                  (widget.onCollapsedTap ?? open)();
                                   return KeyEventResult.handled;
                                 }
                                 return KeyEventResult.ignored;

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/library/data/document_scanner.dart';
 import 'package:folio/features/library/data/file_library_repository.dart';
 import 'package:folio/features/library/data/library_repository.dart';
@@ -91,6 +93,70 @@ void main() {
       expect(registeredWarm.name, 'Warm.pptx');
       expect(await Directory('${cache.path}/session').exists(), isFalse);
       repository.dispose();
+    },
+  );
+
+  test(
+    'initial document opens before cache read and merges into catalog',
+    () async {
+      final cache = await Directory.systemTemp.createTemp('folio-fast-cache-');
+      addTearDown(() async {
+        if (await cache.exists()) {
+          await cache.delete(recursive: true);
+        }
+      });
+
+      final cached = DocumentEntry(
+        id: 'cached-file',
+        source: const FileDocumentSource('/documents/Cached.pdf'),
+        name: 'Cached.pdf',
+        format: DocumentFormat.pdf,
+        sizeBytes: 60,
+        modifiedAt: DateTime.utc(2026, 9, 12),
+      );
+      final seed = FileLibraryRepository(
+        storageGateway: _FakeStorageGateway(hasAccess: false),
+        cacheDirectoryProvider: () async => cache,
+      );
+      addTearDown(seed.dispose);
+      await seed.markOpened(cached);
+      seed.dispose();
+
+      final cacheGate = Completer<Directory>();
+      final gateway = _FakeStorageGateway(
+        hasAccess: false,
+        initial: _incoming('content://provider/document/fast', 'Fast.txt'),
+      );
+      final repository = FileLibraryRepository(
+        storageGateway: gateway,
+        cacheDirectoryProvider: () => cacheGate.future,
+      );
+      addTearDown(repository.dispose);
+
+      final cold = await repository.consumeInitialDocument().timeout(
+        const Duration(milliseconds: 500),
+      );
+      expect(cold?.name, 'Fast.txt');
+
+      cacheGate.complete(cache);
+      final loaded = await repository.load();
+      await repository.flushCacheWrites();
+      expect(repository.lastCacheWriteError, isNull);
+      expect(
+        loaded.documents.map((document) => document.name),
+        containsAll(<String>['Cached.pdf', 'Fast.txt']),
+      );
+
+      final cacheFile = File(
+        '${cache.path}${Platform.pathSeparator}library_catalog.v1.json',
+      );
+      final decoded =
+          jsonDecode(await cacheFile.readAsString()) as Map<String, dynamic>;
+      final persisted = (decoded['documents'] as List)
+          .cast<Map<String, dynamic>>()
+          .map((document) => document['name'])
+          .toSet();
+      expect(persisted, containsAll(<String>['Cached.pdf', 'Fast.txt']));
     },
   );
 

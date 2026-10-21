@@ -5,6 +5,7 @@ class InMemoryLibraryRepository implements LibraryRepository {
   InMemoryLibraryRepository({
     required List<DocumentEntry> documents,
     this.access = LibraryAccess.granted,
+    this.initialDocument,
   }) : _documents = List<DocumentEntry>.of(documents);
 
   factory InMemoryLibraryRepository.demo() {
@@ -49,7 +50,9 @@ class InMemoryLibraryRepository implements LibraryRepository {
   }
 
   final LibraryAccess access;
+  final DocumentEntry? initialDocument;
   final List<DocumentEntry> _documents;
+  bool _initialConsumed = false;
 
   @override
   Future<LibrarySnapshot> load() async {
@@ -71,7 +74,23 @@ class InMemoryLibraryRepository implements LibraryRepository {
   Stream<DocumentEntry> get incomingDocuments => const Stream.empty();
 
   @override
-  Future<DocumentEntry?> consumeInitialDocument() async => null;
+  Future<DocumentEntry?> consumeInitialDocument() async {
+    if (_initialConsumed) {
+      return null;
+    }
+    _initialConsumed = true;
+    final document = initialDocument;
+    if (document == null) {
+      return null;
+    }
+    final index = _documents.indexWhere((item) => item.id == document.id);
+    if (index < 0) {
+      _documents.add(document);
+    } else {
+      _documents[index] = document;
+    }
+    return document;
+  }
 
   @override
   Future<DocumentEntry> markOpened(DocumentEntry document) async {

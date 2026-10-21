@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
@@ -32,8 +33,13 @@ class ReaderScreen extends StatefulWidget {
     this.deferInitialLoad = false,
     this.initialRenderer,
     this.onDisposed,
+    this.openedExternally = false,
+    this.onReturnToMain,
     super.key,
-  });
+  }) : assert(
+         !openedExternally || onReturnToMain != null,
+         'Externally launched readers must provide onReturnToMain.',
+       );
 
   final DocumentEntry document;
   final DocumentContentSource contentSource;
@@ -50,6 +56,14 @@ class ReaderScreen extends StatefulWidget {
   /// moved to Recents and its OpenContainer was removed while reading.
   final VoidCallback? onDisposed;
 
+  /// True when the document came from an external launch. The primary exit
+  /// closes the app, while the expanded menu can also reveal the library.
+  final bool openedExternally;
+
+  /// Reveals the library beneath an externally launched reader. The reader is
+  /// the home-route child rather than a route, so this is not a Navigator pop.
+  final VoidCallback? onReturnToMain;
+
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
 }
@@ -64,6 +78,8 @@ class _ReaderScreenState extends State<ReaderScreen>
       GlobalKey<LiquidSearchControlState>();
   final GlobalKey<LiquidMorphingControlState> _menuKey =
       GlobalKey<LiquidMorphingControlState>();
+  final GlobalKey<LiquidMorphingControlState> _exitKey =
+      GlobalKey<LiquidMorphingControlState>();
   GlobalKey _activeHitKey = GlobalKey();
   late final DocumentRenderer _renderer;
   late final AnimationController _chromeController;
@@ -75,6 +91,7 @@ class _ReaderScreenState extends State<ReaderScreen>
   bool _chromeTarget = true;
   bool _searchExpanded = false;
   bool _menuOpen = false;
+  bool _exitOpen = false;
   bool _infoOpen = false;
   int _lastActiveHit = -2;
   int? _contentPointer;
@@ -127,9 +144,8 @@ class _ReaderScreenState extends State<ReaderScreen>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final showOnScrollUp = FolioSettingsScope.settingsOf(
-      context,
-    ).showNavigationOnScrollUp;
+    final showOnScrollUp = FolioSettingsScope.settingsOf(context)
+        .showNavigationOnScrollUp;
     if (showOnScrollUp != _showNavigationOnScrollUp) {
       _showNavigationOnScrollUp = showOnScrollUp;
       // A preference change must not complete a half-recorded scroll intent.
@@ -223,9 +239,7 @@ class _ReaderScreenState extends State<ReaderScreen>
         await _scrollController.scrollToIndex(
           chunkIndex,
           preferPosition: AutoScrollPosition.begin,
-          duration: reducedMotion
-              ? Duration.zero
-              : AppDurations.fast,
+          duration: reducedMotion ? Duration.zero : AppDurations.fast,
         );
       } catch (_) {
         return;
@@ -321,6 +335,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     }
     setState(() => _infoOpen = true);
     _menuKey.currentState?.close();
+    _exitKey.currentState?.close();
     _clearContentPointer();
     _chromeScrollIntent = 0;
     try {
@@ -338,6 +353,10 @@ class _ReaderScreenState extends State<ReaderScreen>
     if (_infoOpen) {
       return;
     }
+    if (_exitOpen) {
+      _exitKey.currentState?.close();
+      return;
+    }
     if (_menuOpen) {
       _menuKey.currentState?.close();
       return;
@@ -345,7 +364,30 @@ class _ReaderScreenState extends State<ReaderScreen>
     if (_searchKey.currentState?.handleBack() ?? false) {
       return;
     }
-    Navigator.of(context).maybePop();
+    FocusManager.instance.primaryFocus?.unfocus();
+    if (widget.openedExternally) {
+      unawaited(SystemNavigator.pop());
+    } else {
+      Navigator.of(context).maybePop();
+    }
+  }
+
+  void _closeApp() {
+    _exitKey.currentState?.close();
+    FocusManager.instance.primaryFocus?.unfocus();
+    unawaited(SystemNavigator.pop());
+  }
+
+  void _returnToMain() {
+    _exitKey.currentState?.close();
+    _searchKey.currentState?.close();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final returnToMain = widget.onReturnToMain;
+    if (returnToMain != null) {
+      returnToMain();
+    } else {
+      Navigator.of(context).pop();
+    }
   }
 
   bool _onScrollNotification(ScrollNotification notification) {
@@ -386,6 +428,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     if (_renderer is PowerPointDocumentRenderer ||
         _searchExpanded ||
         _menuOpen ||
+        _exitOpen ||
         _infoOpen ||
         _textSelectionActive ||
         !_showNavigationOnScrollUp ||
@@ -421,7 +464,11 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 
   void _handleContentTap() {
-    if (_searchExpanded || _menuOpen || _infoOpen || _textSelectionActive) {
+    if (_searchExpanded ||
+        _menuOpen ||
+        _exitOpen ||
+        _infoOpen ||
+        _textSelectionActive) {
       return;
     }
     // Every format uses the same target, not the current animated opacity.
@@ -468,7 +515,9 @@ class _ReaderScreenState extends State<ReaderScreen>
       return;
     }
     final started = _contentPointerStarted;
-    final isTap = !_contentPointerMoved && !_textSelectionActive &&
+    final isTap =
+        !_contentPointerMoved &&
+        !_textSelectionActive &&
         started != null &&
         event.timeStamp - started < AppDurations.medium;
     _clearContentPointer();
@@ -530,9 +579,16 @@ class _ReaderScreenState extends State<ReaderScreen>
         ? Duration.zero
         : AppDurations.fastest;
     return PopScope<void>(
-      canPop: !_menuOpen && !_infoOpen,
+      canPop: !_menuOpen && !_exitOpen && !_infoOpen,
       onPopInvokedWithResult: (didPop, result) {
-        if (!didPop && !_infoOpen && _menuOpen) {
+        if (didPop || _infoOpen) {
+          return;
+        }
+        if (_exitOpen) {
+          _exitKey.currentState?.close();
+          return;
+        }
+        if (_menuOpen) {
           _menuKey.currentState?.close();
         }
       },
@@ -577,10 +633,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                     child: ReaderChromeShell(
                       progress: _chromeProgress,
                       hiddenDy: ReaderChromeSpec.topHiddenDy,
-                      child: _TopChromeContent(
-                        document: widget.document,
-                        onBack: _handleBackButton,
-                      ),
+                      child: _TopChromeContent(document: widget.document),
                     ),
                   ),
                   Positioned(
@@ -658,54 +711,113 @@ class _ReaderScreenState extends State<ReaderScreen>
                     ),
                   ),
                   Positioned.fill(
-                    child: ReaderChromeShell(
-                      progress: _chromeProgress,
-                      hiddenDy: ReaderChromeSpec.topHiddenDy,
-                      child: LiquidMorphingControl(
-                        key: _menuKey,
-                        collapsedHitKey: const ValueKey<String>(
-                          'reader_menu_button',
-                        ),
-                        collapsedSemanticsLabel: 'Document menu',
-                        expandedSemanticsLabel: 'Document menu',
-                        geometryBuilder: (viewport) {
-                          final top = media.viewPadding.top + 10;
-                          return LiquidMorphGeometry(
-                            collapsedRect: Rect.fromLTWH(
-                              viewport.width - 64,
-                              top,
-                              48,
-                              48,
+                    child: IgnorePointer(
+                      ignoring: _menuOpen,
+                      child: ReaderChromeShell(
+                        progress: _chromeProgress,
+                        hiddenDy: ReaderChromeSpec.topHiddenDy,
+                        child: LiquidMorphingControl(
+                          key: _exitKey,
+                          collapsedHitKey: const ValueKey<String>(
+                            'reader_back_button',
+                          ),
+                          collapsedSemanticsLabel: widget.openedExternally
+                              ? 'Close app'
+                              : 'Back to library',
+                          expandedSemanticsLabel: 'Navigation options',
+                          onCollapsedTap: _handleBackButton,
+                          geometryBuilder: (viewport) {
+                            final top = media.viewPadding.top + 10;
+                            return LiquidMorphGeometry(
+                              collapsedRect: Rect.fromLTWH(16, top, 48, 48),
+                              expandedRect: Rect.fromLTWH(16, top, 226, 112),
+                              expandedCornerRadius: 24,
+                            );
+                          },
+                          collapsedChild: Center(
+                            child: AdaptiveGlassIcon(
+                              widget.openedExternally
+                                  ? LucideIcons.x
+                                  : LucideIcons.chevronLeft,
+                              size: 24,
                             ),
-                            expandedRect: Rect.fromLTWH(
-                              viewport.width - 242,
-                              top,
-                              226,
-                              // Two 48px rows, a 1px divider and the shared
-                              // 8px vertical padding: 113, not 112. The menu
-                              // column overflowed by exactly the missing pixel.
-                              113,
-                            ),
-                            expandedCornerRadius: 24,
-                          );
-                        },
-                        collapsedChild: const Center(child: _MenuGlyph()),
-                        expandedChild: _ReaderMenuContent(
-                          onFileInfo: () => unawaited(_openFileInfo()),
-                          onRemove: () {
-                            _menuKey.currentState?.close();
-                            unawaited(widget.onRemoveFromRecents());
+                          ),
+                          expandedChild: _ReaderExitMenu(
+                            openedExternally: widget.openedExternally,
+                            onReturnToMain: _returnToMain,
+                            onCloseApp: _closeApp,
+                          ),
+                          onExpansionChanged: (expanded) {
+                            if (!mounted || _exitOpen == expanded) {
+                              return;
+                            }
+                            if (expanded) {
+                              _menuKey.currentState?.close();
+                            }
+                            setState(() => _exitOpen = expanded);
+                            if (expanded) {
+                              _setChromeTarget(true);
+                            }
                           },
                         ),
-                        onExpansionChanged: (expanded) {
-                          if (!mounted || _menuOpen == expanded) {
-                            return;
-                          }
-                          setState(() => _menuOpen = expanded);
-                          if (expanded) {
-                            _setChromeTarget(true);
-                          }
-                        },
+                      ),
+                    ),
+                  ),
+                  Positioned.fill(
+                    child: IgnorePointer(
+                      ignoring: _exitOpen,
+                      child: ReaderChromeShell(
+                        progress: _chromeProgress,
+                        hiddenDy: ReaderChromeSpec.topHiddenDy,
+                        child: LiquidMorphingControl(
+                          key: _menuKey,
+                          collapsedHitKey: const ValueKey<String>(
+                            'reader_menu_button',
+                          ),
+                          collapsedSemanticsLabel: 'Document menu',
+                          expandedSemanticsLabel: 'Document menu',
+                          geometryBuilder: (viewport) {
+                            final top = media.viewPadding.top + 10;
+                            return LiquidMorphGeometry(
+                              collapsedRect: Rect.fromLTWH(
+                                viewport.width - 64,
+                                top,
+                                48,
+                                48,
+                              ),
+                              expandedRect: Rect.fromLTWH(
+                                viewport.width - 242,
+                                top,
+                                226,
+                                // Two 48px rows, a 1px divider and the shared
+                                // 8px vertical padding: 113, not 112. The menu
+                                // column overflowed by exactly the missing pixel.
+                                113,
+                              ),
+                              expandedCornerRadius: 24,
+                            );
+                          },
+                          collapsedChild: const Center(child: _MenuGlyph()),
+                          expandedChild: _ReaderMenuContent(
+                            onFileInfo: () => unawaited(_openFileInfo()),
+                            onRemove: () {
+                              _menuKey.currentState?.close();
+                              unawaited(widget.onRemoveFromRecents());
+                            },
+                          ),
+                          onExpansionChanged: (expanded) {
+                            if (!mounted || _menuOpen == expanded) {
+                              return;
+                            }
+                            if (expanded) {
+                              _exitKey.currentState?.close();
+                            }
+                            setState(() => _menuOpen = expanded);
+                            if (expanded) {
+                              _setChromeTarget(true);
+                            }
+                          },
+                        ),
                       ),
                     ),
                   ),
@@ -722,7 +834,11 @@ class _ReaderScreenState extends State<ReaderScreen>
                         animation: _renderer,
                         builder: (context, child) {
                           final hasQuery = _renderer.query.trim().isNotEmpty;
-                          final gated = hasQuery && !_menuOpen && !_infoOpen;
+                          final gated =
+                              hasQuery &&
+                              !_menuOpen &&
+                              !_exitOpen &&
+                              !_infoOpen;
                           return TweenAnimationBuilder<double>(
                             tween: Tween<double>(end: gated ? 1 : 0),
                             duration: navigatorFadeDuration,
@@ -1056,12 +1172,12 @@ String _truncateWithSuffix(
 }
 
 class _TopChromeContent extends StatelessWidget {
-  const _TopChromeContent({required this.document, required this.onBack});
+  const _TopChromeContent({required this.document});
 
   final DocumentEntry document;
-  final VoidCallback onBack;
 
-  static TextStyle _titleStyle(BuildContext context) => AppTextStyles.bodyStrong(context).copyWith(
+  static TextStyle _titleStyle(BuildContext context) =>
+      AppTextStyles.bodyStrong(context).copyWith(
         fontSize: 14,
         fontWeight: FontWeight.w500,
         letterSpacing: -0.1,
@@ -1071,13 +1187,9 @@ class _TopChromeContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       children: <Widget>[
-        _LiquidIconButton(
-          key: const ValueKey<String>('reader_back_button'),
-          semanticsLabel: 'Back',
-          icon: LucideIcons.chevronLeft,
-          iconSize: 24,
-          onTap: onBack,
-        ),
+        // The liquid exit control is positioned independently by the screen.
+        // The matching spacer keeps the title in the same optical centre.
+        const SizedBox(width: 48, height: 48),
         const SizedBox(width: 10),
         Expanded(
           child: LayoutBuilder(
@@ -1146,56 +1258,22 @@ class _TopChromeContent extends StatelessWidget {
   }
 }
 
-class _LiquidIconButton extends StatelessWidget {
-  const _LiquidIconButton({
-    required this.semanticsLabel,
-    required this.icon,
-    required this.onTap,
-    this.iconSize = 18,
-    super.key,
-  });
-
-  final String semanticsLabel;
-  final IconData icon;
-  final VoidCallback onTap;
-  final double iconSize;
-
-  @override
-  Widget build(BuildContext context) {
-    return _LiquidChromeObject(
-      size: const Size(48, 48),
-      semanticsLabel: semanticsLabel,
-      onTap: onTap,
-      child: AdaptiveGlassIcon(icon, size: iconSize),
-    );
-  }
-}
-
 class _LiquidChromeObject extends StatelessWidget {
   const _LiquidChromeObject({
     required this.size,
     required this.child,
-    this.semanticsLabel,
-    this.onTap,
     super.key,
   });
 
   final Size size;
   final Widget child;
-  final String? semanticsLabel;
-  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
     // Единый liquid-примитив (сам ослабляет tight-ограничения внутренним
     // OverflowBox: оптическая оболочка выступает за [size] без клиппинга).
     // Зона захвата — дефолтные 8pt, как у меню: палец цепляется одинаково.
-    return LiquidGlassControl(
-      size: size,
-      semanticsLabel: semanticsLabel,
-      onTap: onTap,
-      child: child,
-    );
+    return LiquidGlassControl(size: size, child: child);
   }
 }
 
@@ -1210,10 +1288,7 @@ class _ProgressPill extends StatelessWidget {
       key: const ValueKey<String>('reader_progress_glass'),
       size: const Size(62, 38),
       child: Center(
-        child: AdaptiveGlassText(
-          label,
-          style: AppTextStyles.smallDim(context),
-        ),
+        child: AdaptiveGlassText(label, style: AppTextStyles.smallDim(context)),
       ),
     );
   }
@@ -1225,11 +1300,11 @@ class _SearchNavigator extends StatelessWidget {
   final DocumentRenderer renderer;
 
   static TextStyle _labelStyle(BuildContext context) => TextStyle(
-        fontFamily: 'Inter',
-        color: appColors.textPrimary,
-        fontSize: 12.5,
-        fontWeight: FontWeight.w500,
-      );
+    fontFamily: 'Inter',
+    color: appColors.textPrimary,
+    fontSize: 12.5,
+    fontWeight: FontWeight.w500,
+  );
   static const double _height = 46;
   static const double _leftPadding = 15;
   static const double _rightPadding = 6;
@@ -1381,6 +1456,51 @@ class _MenuGlyph extends StatelessWidget {
   }
 }
 
+class _ReaderExitMenu extends StatelessWidget {
+  const _ReaderExitMenu({
+    required this.openedExternally,
+    required this.onReturnToMain,
+    required this.onCloseApp,
+  });
+
+  final bool openedExternally;
+  final VoidCallback onReturnToMain;
+  final VoidCallback onCloseApp;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = openedExternally
+        ? _MenuAction(
+            label: 'Close app',
+            icon: LucideIcons.x,
+            onTap: onCloseApp,
+          )
+        : _MenuAction(
+            label: 'Return to main',
+            icon: LucideIcons.chevronLeft,
+            onTap: onReturnToMain,
+          );
+    final secondary = openedExternally
+        ? _MenuAction(
+            label: 'Return to main',
+            icon: LucideIcons.chevronLeft,
+            onTap: onReturnToMain,
+          )
+        : _MenuAction(
+            label: 'Close app',
+            icon: LucideIcons.x,
+            onTap: onCloseApp,
+          );
+    return Padding(
+      padding: AppSpacing.settingsRowPadding,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[primary, secondary],
+      ),
+    );
+  }
+}
+
 class _ReaderMenuContent extends StatelessWidget {
   const _ReaderMenuContent({required this.onFileInfo, required this.onRemove});
 
@@ -1412,16 +1532,19 @@ class _ReaderMenuContent extends StatelessWidget {
 }
 
 class _MenuAction extends StatelessWidget {
-  const _MenuAction({required this.label, required this.onTap});
+  const _MenuAction({required this.label, required this.onTap, this.icon});
 
   final String label;
   final VoidCallback onTap;
+  final IconData? icon;
 
   @override
   Widget build(BuildContext context) {
     return Semantics(
       button: true,
       label: label,
+      onTap: onTap,
+      excludeSemantics: true,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTap,
@@ -1431,9 +1554,21 @@ class _MenuAction extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              child: AdaptiveGlassText(
-                label,
-                style: AppTextStyles.bodyStrong(context),
+              child: Row(
+                children: <Widget>[
+                  if (icon case final icon?) ...<Widget>[
+                    AdaptiveGlassIcon(icon, size: 16),
+                    const SizedBox(width: 10),
+                  ],
+                  Expanded(
+                    child: AdaptiveGlassText(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTextStyles.bodyStrong(context),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

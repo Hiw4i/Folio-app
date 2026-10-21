@@ -23,11 +23,21 @@ class LibraryScreen extends StatefulWidget {
   const LibraryScreen({
     required this.controller,
     required this.documentContentSource,
+    required this.onOpenExternalDocument,
+    this.active = true,
     super.key,
   });
 
   final LibraryController controller;
   final DocumentContentSource documentContentSource;
+
+  /// Hands an externally launched document to the app root. The root shows it
+  /// above this library so Android can own back and keep this screen mounted.
+  final ValueChanged<DocumentEntry> onOpenExternalDocument;
+
+  /// False while the library is covered by an externally launched reader.
+  /// Incoming documents wait until the library is active again.
+  final bool active;
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
@@ -63,6 +73,13 @@ class _LibraryScreenState extends State<LibraryScreen>
         }
       });
     }
+    if (!oldWidget.active && widget.active) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && widget.active) {
+          _openPendingDocument();
+        }
+      });
+    }
   }
 
   @override
@@ -75,7 +92,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   void _openPendingDocument() {
-    if (!mounted || _readerOpen || _settingsOpen) {
+    if (!mounted || !widget.active || _readerOpen || _settingsOpen) {
       return;
     }
     // Peek first: taking now would drop the document when the route cannot
@@ -85,16 +102,22 @@ class _LibraryScreenState extends State<LibraryScreen>
     }
     _readerOpen = true;
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) {
+      if (!mounted || !widget.active) {
         _readerOpen = false;
         return;
       }
+      final external = widget.controller.pendingDocumentIsExternal;
       final document = widget.controller.takePendingDocument();
       if (document == null) {
         _readerOpen = false;
         return;
       }
       FocusManager.instance.primaryFocus?.unfocus();
+      if (external) {
+        _readerOpen = false;
+        widget.onOpenExternalDocument(document);
+        return;
+      }
       await Navigator.of(context).push<void>(
         PageRouteBuilder<void>(
           transitionDuration: MediaQuery.disableAnimationsOf(context)
@@ -123,7 +146,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   bool _beginReaderOpen() {
-    if (!mounted || _readerOpen || _settingsOpen) {
+    if (!mounted || !widget.active || _readerOpen || _settingsOpen) {
       return false;
     }
     _readerOpen = true;
@@ -139,7 +162,7 @@ class _LibraryScreenState extends State<LibraryScreen>
   }
 
   Future<void> _openSettings() async {
-    if (_settingsOpen || _readerOpen) {
+    if (!widget.active || _settingsOpen || _readerOpen) {
       return;
     }
     _settingsOpen = true;
@@ -181,12 +204,15 @@ class _LibraryScreenState extends State<LibraryScreen>
         child: LiquidSearchControl(
           key: const ValueKey<String>('library_search'),
           onChanged: widget.controller.updateQuery,
+          active: widget.active,
         ),
       ),
       builder: (context, child) => PopScope<void>(
-        canPop: widget.controller.unavailableDocument == null,
+        canPop: !widget.active || widget.controller.unavailableDocument == null,
         onPopInvokedWithResult: (didPop, result) {
-          if (!didPop && widget.controller.unavailableDocument != null) {
+          if (!didPop &&
+              widget.active &&
+              widget.controller.unavailableDocument != null) {
             widget.controller.dismissUnavailable();
           }
         },

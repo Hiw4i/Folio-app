@@ -9,7 +9,10 @@ import 'package:folio/shared/settings/folio_settings_scope.dart';
 import '../../support/memory_settings_store.dart';
 
 void main() {
-  Widget buildHarness({required ValueChanged<int> onBackgroundDrag}) {
+  Widget buildHarness({
+    required ValueChanged<int> onBackgroundDrag,
+    VoidCallback? onCollapsedTap,
+  }) {
     return MediaQuery(
       data: const MediaQueryData(),
       child: Directionality(
@@ -25,6 +28,7 @@ void main() {
               collapsedHitKey: const ValueKey<String>('morph_hit'),
               collapsedSemanticsLabel: 'Open menu',
               expandedSemanticsLabel: 'Menu',
+              onCollapsedTap: onCollapsedTap,
               geometryBuilder: (size) => LiquidMorphGeometry(
                 collapsedRect: const Rect.fromLTWH(300, 20, 48, 48),
                 expandedRect: const Rect.fromLTWH(140, 20, 208, 116),
@@ -59,6 +63,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(backgroundDrags, 0);
+  });
+
+  testWidgets('short tap runs the primary action while long press expands', (
+    tester,
+  ) async {
+    var primaryActions = 0;
+    await tester.pumpWidget(
+      buildHarness(
+        onBackgroundDrag: (_) {},
+        onCollapsedTap: () => primaryActions += 1,
+      ),
+    );
+
+    final hit = find.byKey(const ValueKey<String>('morph_hit'));
+    await tester.tapAt(tester.getCenter(hit));
+    await tester.pumpAndSettle();
+
+    expect(primaryActions, 1);
+    expect(find.text('Menu content'), findsNothing);
+
+    await tester.longPress(hit);
+    await tester.pumpAndSettle();
+
+    expect(primaryActions, 1);
+    expect(find.text('Menu content'), findsOneWidget);
   });
 
   testWidgets('menu content receives velocity blur during its spring morph', (
