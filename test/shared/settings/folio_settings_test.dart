@@ -262,7 +262,7 @@ void main() {
   });
 
   test(
-    'atomic writer replaces content and removes the temporary file',
+    'atomic writer replaces content and leaves no staging or backup files',
     () async {
       final directory = await Directory.systemTemp.createTemp('folio-atomic-');
       addTearDown(() => directory.delete(recursive: true));
@@ -270,20 +270,52 @@ void main() {
       await writeFileAtomically(file, 'old');
       await writeFileAtomically(file, 'new');
       expect(await file.readAsString(), 'new');
-      expect(await File('${file.path}.tmp').exists(), isFalse);
+      final leftovers = await directory
+          .list()
+          .where((entry) => entry.path.endsWith('.tmp') || entry.path.endsWith('.bak'))
+          .toList();
+      expect(leftovers, isEmpty);
     },
   );
 
-  test('failed atomic write preserves the previous destination', () async {
+  test('staging paths are unique per call', () {
+    final first = temporaryPathFor('/data/cache.json');
+    final second = temporaryPathFor('/data/cache.json');
+    expect(first, isNot(second));
+    expect(first, startsWith('/data/cache.json.'));
+    expect(first, endsWith('.tmp'));
+  });
+
+  test('failed staging write preserves the previous destination', () async {
     final directory = await Directory.systemTemp.createTemp(
       'folio-atomic-fail-',
     );
     addTearDown(() => directory.delete(recursive: true));
     final file = File('${directory.path}/cache.json');
     await file.writeAsString('last-good');
-    // A directory at the temp path forces a write error even when tests run
-    // as an administrator (chmod-based permission tests are unreliable).
-    await Directory('${file.path}.tmp').create();
+    // A directory at the staging path forces a write error even when tests
+    // run as an administrator (chmod-based permission tests are unreliable).
+    final blockedStaging = Directory('${directory.path}/blocked.tmp').path;
+    await Directory(blockedStaging).create();
+    await expectLater(
+      writeFileAtomically(file, 'replacement', temporaryPath: blockedStaging),
+      throwsA(isA<FileSystemException>()),
+    );
+    expect(await file.readAsString(), 'last-good');
+  });
+
+  test('failed backup swap preserves the previous destination', () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'folio-atomic-backup-',
+    );
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/cache.json');
+    await file.writeAsString('last-good');
+    // A directory at the backup path makes the "move the last good file
+    // aside" step fail before the destination is ever touched: the write
+    // must fail without destroying the previous file (the old delete-then-
+    // rename implementation lost it exactly here).
+    await Directory('${file.path}.bak').create();
     await expectLater(
       writeFileAtomically(file, 'replacement'),
       throwsA(isA<FileSystemException>()),

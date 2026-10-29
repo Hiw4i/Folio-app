@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -17,6 +18,7 @@ import 'features/library/data/library_repository.dart';
 import 'features/library/logic/library_controller.dart';
 import 'features/reader/data/document_content_source.dart';
 import 'shared/android/android_storage_gateway.dart';
+import 'shared/diagnostics/app_log.dart';
 import 'shared/glass/widgets/adaptive_glass_foreground.dart';
 import 'shared/selection/folio_selection_toolbar.dart';
 import 'shared/settings/folio_settings_controller.dart';
@@ -26,6 +28,7 @@ import 'shared/theme/folio_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  _installGlobalErrorHandlers();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
@@ -37,6 +40,26 @@ void main() {
     ),
   );
   runApp(const FolioApp());
+}
+
+/// Errors escaping a zone used to vanish in release builds: the app kept
+/// running with whatever state the failing callback left behind, invisible to
+/// both the user and any future crash reporting. Presenting framework errors
+/// keeps dev tooling unchanged; platform errors are reported and surfaced to
+/// the dispatcher.
+void _installGlobalErrorHandlers() {
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    AppLog.e(
+      'Uncaught framework error',
+      details.exception,
+      details.stack,
+    );
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    AppLog.e('Uncaught platform error', error, stack);
+    return false;
+  };
 }
 
 class FolioApp extends StatefulWidget {
@@ -83,9 +106,9 @@ class _FolioAppState extends State<FolioApp> {
   Future<void> _resolveLaunchDocument() async {
     try {
       await _libraryController.probeLaunchDocument();
-    } catch (error) {
+    } catch (error, stack) {
       // A malformed launch intent must never block the library.
-      debugPrint('Folio launch probe failed: $error');
+      AppLog.e('Folio launch probe failed', error, stack);
     }
     if (!mounted) {
       return;
