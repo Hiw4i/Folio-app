@@ -45,6 +45,11 @@ class LibraryScreen extends StatefulWidget {
 
 class _LibraryScreenState extends State<LibraryScreen>
     with WidgetsBindingObserver {
+  /// Minimum interval between full catalog re-scans on app resume.
+  static const Duration _resumeRefreshCooldown = Duration(seconds: 10);
+
+  DateTime? _lastResumeRefresh;
+
   final ScrollController _scrollController = ScrollController();
   bool _readerOpen = false;
   bool _settingsOpen = false;
@@ -183,7 +188,18 @@ class _LibraryScreenState extends State<LibraryScreen>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(widget.controller.refresh());
+      // Every resume used to trigger a full recursive storage sweep, which
+      // on a large library is seconds of isolate work (and battery) for a
+      // glance at another app. A short cooldown keeps the periodic sync
+      // while collapsing rapid resume storms into one scan.
+      final now = DateTime.now();
+      final shouldRefresh =
+          _lastResumeRefresh == null ||
+          now.difference(_lastResumeRefresh!) >= _resumeRefreshCooldown;
+      if (shouldRefresh) {
+        _lastResumeRefresh = now;
+        unawaited(widget.controller.refresh());
+      }
     } else if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
       ReaderPreloader.clear();

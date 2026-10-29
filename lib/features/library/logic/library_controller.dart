@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../shared/diagnostics/app_log.dart';
 import '../data/document_entry.dart';
 import '../data/library_repository.dart';
 
@@ -167,9 +168,9 @@ class LibraryController extends ChangeNotifier {
       _pendingDocument = initialDocument;
       _pendingDocumentIsExternal = true;
       _notify();
-    } catch (error) {
+    } catch (error, stack) {
       // A failed launch intent must not hide an otherwise valid catalog.
-      debugPrint('Folio launch document unavailable: $error');
+      AppLog.w('Folio launch document unavailable', error, stack);
     }
   }
 
@@ -191,12 +192,12 @@ class LibraryController extends ChangeNotifier {
       _replaceDocuments(snapshot.documents);
       _access = snapshot.access;
       _loadState = LibraryLoadState.ready;
-    } catch (error) {
+    } catch (error, stack) {
       if (_disposed) {
         return;
       }
       _loadState = LibraryLoadState.failed;
-      debugPrint('Folio catalog load failed: $error');
+      AppLog.w('Folio catalog load failed', error, stack);
     }
     _notify();
     if (!_disposed && _loadState == LibraryLoadState.ready) {
@@ -238,7 +239,7 @@ class LibraryController extends ChangeNotifier {
         onError: (Object error, StackTrace stack) {
           if (!_disposed) {
             _refreshFailed = true;
-            debugPrint('Folio catalog scan failed: $error');
+            AppLog.w('Folio catalog scan failed', error, stack);
             _notify();
           }
         },
@@ -249,10 +250,10 @@ class LibraryController extends ChangeNotifier {
         },
       );
       await completed.future;
-    } catch (error) {
+    } catch (error, stack) {
       if (!_disposed) {
         _refreshFailed = true;
-        debugPrint('Folio catalog scan failed: $error');
+        AppLog.w('Folio catalog scan failed', error, stack);
       }
     } finally {
       _refreshSubscription = null;
@@ -268,8 +269,8 @@ class LibraryController extends ChangeNotifier {
     }
     try {
       await repository.requestFullAccess();
-    } catch (error) {
-      debugPrint('Folio storage settings unavailable: $error');
+    } catch (error, stack) {
+      AppLog.w('Folio storage settings unavailable', error, stack);
       _refreshFailed = true;
       _notify();
     }
@@ -293,6 +294,10 @@ class LibraryController extends ChangeNotifier {
     _notify();
   }
 
+
+  /// Queues [document] as the pending in-app launch. Production open flow
+  /// goes through the library screen's OpenContainer; this is the
+  /// controller-level path the regression tests pin.
   Future<void> open(DocumentEntry document) async {
     final updated = await markOpened(document);
     if (updated == null || _disposed) {
@@ -302,7 +307,6 @@ class LibraryController extends ChangeNotifier {
     _pendingDocumentIsExternal = false;
     _notify();
   }
-
   /// Recording history must never prevent opening the actual document.
   Future<DocumentEntry?> markOpened(DocumentEntry document) async {
     if (_disposed) {
@@ -317,8 +321,8 @@ class LibraryController extends ChangeNotifier {
     DocumentEntry updated;
     try {
       updated = await repository.markOpened(document);
-    } catch (error) {
-      debugPrint('Folio could not record recent document: $error');
+    } catch (error, stack) {
+      AppLog.w('Folio could not record recent document', error, stack);
       updated = document.copyWith(lastOpenedAt: DateTime.now());
     }
     if (_disposed) {
@@ -364,8 +368,8 @@ class LibraryController extends ChangeNotifier {
       }
       _unavailableDocument = null;
       _notify();
-    } catch (error) {
-      debugPrint('Folio could not recover document access: $error');
+    } catch (error, stack) {
+      AppLog.w('Folio could not recover document access', error, stack);
     }
   }
 
@@ -388,8 +392,8 @@ class LibraryController extends ChangeNotifier {
     }
     try {
       await repository.removeFromRecents(document);
-    } catch (error) {
-      debugPrint('Folio could not persist recent removal: $error');
+    } catch (error, stack) {
+      AppLog.w('Folio could not persist recent removal', error, stack);
     }
     if (_disposed) {
       return;
@@ -419,7 +423,7 @@ class LibraryController extends ChangeNotifier {
         _notify();
       },
       onError: (Object error, StackTrace stack) {
-        debugPrint('Folio incoming document failed: $error');
+        AppLog.w('Folio incoming document failed', error, stack);
       },
     );
   }
@@ -459,8 +463,8 @@ class LibraryController extends ChangeNotifier {
   static Future<void> _cancel(StreamSubscription<Object?>? subscription) async {
     try {
       await subscription?.cancel();
-    } catch (error) {
-      debugPrint('Folio subscription cleanup failed: $error');
+    } catch (error, stack) {
+      AppLog.w('Folio subscription cleanup failed', error, stack);
     }
   }
 }

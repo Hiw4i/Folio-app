@@ -57,7 +57,10 @@ class FileLibraryRepository implements LibraryRepository {
       _access = await storageGateway.hasAllFilesAccess()
           ? LibraryAccess.granted
           : LibraryAccess.denied;
-    } catch (_) {
+    } catch (error, stack) {
+      // Missing plugin or a failed platform call is not the same signal as a
+      // real denial; degrade to denied but leave the cause in the log.
+      AppLog.w('Folio storage access probe failed', error, stack);
       _access = LibraryAccess.denied;
     }
     return _snapshot();
@@ -174,7 +177,10 @@ class FileLibraryRepository implements LibraryRepository {
       // launch cannot replace the rest of the catalog with this one entry.
       unawaited(_registerIncoming(incoming));
       return registered;
-    } catch (_) {
+    } catch (error, stack) {
+      // A malformed launch intent must never hide the catalog; this is the
+      // one layer that sees the real cause, so it is logged here.
+      AppLog.w('Folio launch intent could not be consumed', error, stack);
       return null;
     }
   }
@@ -321,7 +327,10 @@ class FileLibraryRepository implements LibraryRepository {
         }
       }
       return restored;
-    } catch (_) {
+    } catch (error, stack) {
+      // A vanished or unreadable cache degrades to an empty recents list;
+      // the documents themselves are never stored here.
+      AppLog.w('Folio catalog cache could not be read', error, stack);
       return const <DocumentEntry>[];
     }
   }

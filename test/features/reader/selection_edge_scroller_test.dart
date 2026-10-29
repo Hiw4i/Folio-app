@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:folio/features/reader/text/logic/selection_edge_scroller.dart';
+import 'package:folio/features/reader/logic/selection_edge_scroller.dart';
 
 void main() {
   testWidgets('a stationary point inside the bottom edge keeps scrolling', (

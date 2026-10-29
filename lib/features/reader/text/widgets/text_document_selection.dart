@@ -19,7 +19,7 @@ import '../../../../shared/selection/folio_selection_toolbar.dart';
 import '../../../../shared/selection/selection_magnifier.dart';
 import '../../../../shared/selection/selection_visuals.dart';
 import '../data/text_document.dart';
-import '../logic/selection_edge_scroller.dart';
+import '../../logic/selection_edge_scroller.dart';
 import 'text_selection_source.dart';
 import 'reader_selection_handle_controls.dart';
 
