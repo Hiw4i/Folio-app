@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 
+import '../diagnostics/app_log.dart';
 import 'folio_settings.dart';
 import 'folio_settings_controller.dart';
 
@@ -17,8 +18,22 @@ class FolioSettingsScope extends InheritedNotifier<FolioSettingsController> {
           .dependOnInheritedWidgetOfExactType<FolioSettingsScope>()
           ?.notifier;
 
-  static FolioSettings settingsOf(BuildContext context) =>
-      maybeControllerOf(context)?.settings ?? const FolioSettings();
+  static FolioSettings settingsOf(BuildContext context) {
+    final controller = maybeControllerOf(context);
+    if (controller == null) {
+      // The documented fallback for isolated controls and tests. Loud in
+      // debug so a forgotten scope above a real screen is discoverable
+      // instead of silently showing defaults.
+      assert(() {
+        AppLog.w(
+          'FolioSettingsScope is missing above $context; '
+          'settings-dependent widgets fall back to defaults.',
+        );
+        return true;
+      }());
+    }
+    return controller?.settings ?? const FolioSettings();
+  }
 
   static bool blurEnabledOf(BuildContext context) =>
       settingsOf(context).blurEnabled;

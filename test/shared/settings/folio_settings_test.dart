@@ -262,6 +262,30 @@ void main() {
   });
 
   test(
+    'unreadable settings file is quarantined and the path becomes usable',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'folio-quarantine-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}/folio_settings.v1.json');
+      // A directory at the settings path makes readAsString throw a
+      // FileSystemException — previously unhandled, so every future start
+      // failed instead of falling back to defaults.
+      await Directory(file.path).create();
+      final store = FileFolioSettingsStore(
+        directoryProvider: () async => directory,
+      );
+      expect(await store.load(), const FolioSettings());
+      await store.save(const FolioSettings(blurEnabled: true));
+      expect(
+        await File(file.path).readAsString(),
+        contains('"blurEnabled":true'),
+      );
+    },
+  );
+
+  test(
     'atomic writer replaces content and leaves no staging or backup files',
     () async {
       final directory = await Directory.systemTemp.createTemp('folio-atomic-');

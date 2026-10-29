@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
+import '../diagnostics/app_log.dart';
 import '../persistence/atomic_file.dart';
 import 'folio_settings.dart';
 
@@ -27,7 +28,17 @@ class FileFolioSettingsStore implements FolioSettingsStore {
   @override
   Future<FolioSettings> load() async {
     final file = await _file();
-    if (!await file.exists()) {
+    final entityType = await FileSystemEntity.type(file.path);
+    if (entityType == FileSystemEntityType.notFound) {
+      return const FolioSettings();
+    }
+    if (entityType != FileSystemEntityType.file) {
+      // A directory or link squatting the settings path is not recoverable
+      // data. File.exists reports false for it, so without this check the
+      // path would silently block every future save; clear it and start
+      // from defaults.
+      AppLog.w('Folio settings path is occupied by a $entityType; cleared.');
+      await _quarantine(file);
       return const FolioSettings();
     }
     try {
@@ -36,20 +47,55 @@ class FileFolioSettingsStore implements FolioSettingsStore {
         throw const FormatException('Unsupported Folio settings file.');
       }
       return FolioSettings.fromJson(decoded);
-    } on FormatException {
-      // A corrupt settings file must not poison every future start.
-      // Quarantine it once (best-effort) and fall back to defaults.
-      try {
-        await file.delete();
-      } on FileSystemException {
-        // Keep defaults when the file cannot be removed.
-      }
+    } catch (error, stack) {
+      // An unreadable or corrupt settings file must not poison every future
+      // start: quarantine it once (best-effort) and fall back to defaults.
+      AppLog.w('Folio settings quarantined', error, stack);
+      await _quarantine(file);
       return const FolioSettings();
     }
+  }
+
+  /// Moves the poisoned file to a `.corrupt` sibling so the contents remain
+  /// inspectable; deleting is the fallback when the rename is not possible.
+  /// A directory squatting the path is removed outright (File.rename/delete
+  /// reject directories on some platforms).
+  Future<void> _quarantine(File file) async {
+    final entityType = await FileSystemEntity.type(file.path);
+    if (entityType == FileSystemEntityType.notFound) {
+      return;
+    }
+    if (entityType == FileSystemEntityType.directory) {
+      try {
+        await Directory(file.path).delete(recursive: true);
+      } on FileSystemException {
+        // The path stays blocked; the next start retries the quarantine.
+      }
+      return;
+    }
+    final quarantine = File('${file.path}.corrupt');
+    try {
+      await _bestEffortDelete(quarantine);
+      await file.rename(quarantine.path);
+      return;
+    } on FileSystemException {
+      // Fall through to deletion.
+    }
+    await _bestEffortDelete(file);
   }
 
   @override
   Future<void> save(FolioSettings settings) async {
     await writeFileAtomically(await _file(), jsonEncode(settings.toJson()));
+  }
+}
+
+Future<void> _bestEffortDelete(File file) async {
+  try {
+    if (await file.exists()) {
+      await file.delete();
+    }
+  } on FileSystemException {
+    // Nothing to fall back to; the next write reclaims the name.
   }
 }
