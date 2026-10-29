@@ -87,12 +87,11 @@ class _ReaderLoadingViewState extends State<ReaderLoadingView> {
 
   @override
   Widget build(BuildContext context) {
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
     return AnimatedOpacity(
       key: const ValueKey<String>('reader_loading_fade'),
       opacity: _visible ? 1 : 0,
-      duration: reducedMotion ? Duration.zero : ReaderLoadingView.fade,
-      curve: Curves.easeOutCubic,
+      duration: AppMotion.resolve(context, ReaderLoadingView.fade),
+      curve: AppCurves.emphasized,
       child: IgnorePointer(
         ignoring: !_visible,
         child: ExcludeSemantics(
@@ -233,8 +232,8 @@ class ReaderContentFadeIn extends StatelessWidget {
     }
     return TweenAnimationBuilder<double>(
       tween: Tween<double>(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
+      duration: AppDurations.normal,
+      curve: AppCurves.emphasized,
       builder: (context, value, child) {
         return Opacity(opacity: value, child: child);
       },

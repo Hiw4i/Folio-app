@@ -238,7 +238,7 @@ class _FolioSelectionToolbarState extends State<_FolioSelectionToolbarSurface>
       _position = Offset.lerp(
         _motionStart,
         _motionTarget,
-        Curves.easeOutCubic.transform(
+        AppCurves.emphasized.transform(
           ((WidgetsBinding.instance.currentFrameTimeStamp - _motionStartedAt)
                       .inMicroseconds /
                   _motionDuration.inMicroseconds)

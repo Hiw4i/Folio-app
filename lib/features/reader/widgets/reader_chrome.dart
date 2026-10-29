@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../../shared/glass/surface/liquid_surface.dart';
+import '../../../shared/theme/folio_theme.dart';
 
 /// Shared show/hide spec for every reader control.
 ///
@@ -11,11 +12,11 @@ import '../../../shared/glass/surface/liquid_surface.dart';
 /// once dismissed, are fully unmounted — no `BackdropFilter` cost while
 /// reading.
 abstract final class ReaderChromeSpec {
-  static const Duration showDuration = Duration(milliseconds: 420);
-  static const Duration hideDuration = Duration(milliseconds: 420);
+  static const Duration showDuration = AppDurations.xslow;
+  static const Duration hideDuration = AppDurations.xslow;
 
-  static const Curve showCurve = Curves.easeOutCubic;
-  static const Curve hideCurve = Curves.easeInCubic;
+  static const Curve showCurve = AppCurves.emphasized;
+  static const Curve hideCurve = AppCurves.exit;
 
   /// A short intentional drag is required before chrome changes direction.
   /// This filters touch jitter, bounce-back and tiny reading corrections.

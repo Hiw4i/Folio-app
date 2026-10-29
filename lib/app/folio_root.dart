@@ -56,8 +56,8 @@ class _FolioRootState extends State<FolioRoot>
     );
     _curve = CurvedAnimation(
       parent: _transition,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
+      curve: AppCurves.emphasized,
+      reverseCurve: AppCurves.exit,
     );
     _opacity = _curve;
     _scale = Tween<double>(begin: 0.985, end: 1).animate(_curve);
@@ -86,11 +86,8 @@ class _FolioRootState extends State<FolioRoot>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    _transition.duration = reducedMotion ? Duration.zero : AppDurations.normal;
-    _transition.reverseDuration = reducedMotion
-        ? Duration.zero
-        : AppDurations.fast;
+    _transition.duration = AppMotion.resolve(context, AppDurations.normal);
+    _transition.reverseDuration = AppMotion.resolve(context, AppDurations.fast);
   }
 
   DocumentRenderer? _prepare(DocumentEntry document) {

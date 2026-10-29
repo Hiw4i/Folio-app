@@ -5,8 +5,6 @@ import '../../../shared/theme/folio_theme.dart';
 import '../../../shared/utils/file_format.dart' show formatFileSize;
 import '../data/document_entry.dart';
 
-export '../../../shared/utils/file_format.dart' show formatFileSize;
-
 class DocumentRow extends StatefulWidget {
   const DocumentRow({
     required this.document,
@@ -34,7 +32,6 @@ class _DocumentRowState extends State<DocumentRow> {
 
   @override
   Widget build(BuildContext context) {
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
     final document = widget.document;
     return Semantics(
       button: true,
@@ -49,12 +46,12 @@ class _DocumentRowState extends State<DocumentRow> {
         onTapUp: (_) => _setPressed(false),
         onTap: widget.onTap,
         child: AnimatedScale(
-          scale: _pressed && !reducedMotion ? 0.986 : 1,
-          duration: reducedMotion ? Duration.zero : AppDurations.fastest,
-          curve: Curves.easeOutCubic,
+          scale: _pressed ? 0.986 : 1,
+          duration: AppMotion.resolve(context, AppDurations.fastest),
+          curve: AppCurves.emphasized,
           alignment: Alignment.center,
           child: AnimatedContainer(
-            duration: reducedMotion ? Duration.zero : AppDurations.fastest,
+            duration: AppMotion.resolve(context, AppDurations.fastest),
             color: _pressed ? const Color(0x0FFFFFFF) : const Color(0x00000000),
             padding: AppSpacing.documentRowPadding,
             child: SizedBox(
@@ -117,7 +114,7 @@ class _FormatGlyph extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0x0BFFFFFF),
         borderRadius: AppRadius.controlRadius,
-        border: Border.all(color: const Color(0x1FFFFFFF), width: 0.8),
+        border: Border.all(color: appColors.separator, width: 0.8),
       ),
       alignment: Alignment.center,
       child: format.iconPath != null

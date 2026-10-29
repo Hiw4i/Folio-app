@@ -120,12 +120,11 @@ class _LibraryScreenState extends State<LibraryScreen>
       }
       await Navigator.of(context).push<void>(
         PageRouteBuilder<void>(
-          transitionDuration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : AppDurations.fast,
-          reverseTransitionDuration: MediaQuery.disableAnimationsOf(context)
-              ? Duration.zero
-              : AppDurations.fast,
+          transitionDuration: AppMotion.resolve(context, AppDurations.fast),
+          reverseTransitionDuration: AppMotion.resolve(
+            context,
+            AppDurations.fast,
+          ),
           pageBuilder: (context, animation, secondaryAnimation) => ReaderScreen(
             document: document,
             contentSource: widget.documentContentSource,
@@ -493,7 +492,10 @@ class _DocumentOpenContainer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
+    // Single source of truth for the morph length: the container transition
+    // and the deferred Recents rebuild must agree, or the row jumps mid-morph.
+    final morphDuration = AppMotion.resolve(context, AppDurations.medium);
+    final reducedMotion = morphDuration == Duration.zero;
     return OpenContainer<void>(
       tappable: false,
       closedColor: const Color(0x00000000),
@@ -505,7 +507,7 @@ class _DocumentOpenContainer extends StatelessWidget {
       openShape: const RoundedRectangleBorder(),
       clipBehavior: Clip.none,
       transitionType: ContainerTransitionType.fade,
-      transitionDuration: reducedMotion ? Duration.zero : AppDurations.medium,
+      transitionDuration: morphDuration,
       closedBuilder: (context, openContainer) => DocumentRow(
         key: ValueKey<String>('document_${document.id}'),
         document: document,
@@ -534,16 +536,12 @@ class _DocumentOpenContainer extends StatelessWidget {
           }
           // Updating Recents can move this row into another sliver. Wait until
           // the source container has finished morphing before rebuilding it.
-          if (reducedMotion) {
-            unawaited(controller.markOpened(document));
-          } else {
-            unawaited(
-              Future<void>.delayed(
-                AppDurations.medium,
-                () => controller.markOpened(document),
-              ),
-            );
-          }
+          unawaited(
+            Future<void>.delayed(
+              morphDuration,
+              () => controller.markOpened(document),
+            ),
+          );
         },
       ),
       openBuilder: (context, closeContainer) {

@@ -92,7 +92,7 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
       builder: (context, child) {
         final t = offstage
             ? 0.0
-            : Curves.easeOut.transform(
+            : AppCurves.easeOut.transform(
                 (animation!.value / _backdropRatio).clamp(0.0, 1.0),
               );
         final blurEnabled = FolioSettingsScope.blurEnabledOf(context);
@@ -172,7 +172,7 @@ class _BottomSheetPositionState extends State<_BottomSheetPosition> {
   Curve _transitionCurve = _openingCurve;
 
   static const Curve _openingCurve = Cubic(0.24, 1.2, 0.2, 1.0);
-  static const Curve _closingCurve = Curves.easeInOutCubic;
+  static const Curve _closingCurve = AppCurves.neutral;
 
   @override
   void initState() {
@@ -202,7 +202,7 @@ class _BottomSheetPositionState extends State<_BottomSheetPosition> {
   }
 
   void _onDragStart(DragStartDetails details) {
-    setState(() => _dragCurve = Curves.linear);
+    setState(() => _dragCurve = AppCurves.linear);
   }
 
   void _onDragEnd(DragEndDetails details, {required bool isClosing}) {
@@ -211,7 +211,7 @@ class _BottomSheetPositionState extends State<_BottomSheetPosition> {
       _dragCurve = start >= 1
           ? null
           : isClosing
-          ? Curves.linear
+          ? AppCurves.linear
           : _DragReleaseCurve(start);
     });
   }
@@ -241,7 +241,7 @@ class _BottomSheetPositionState extends State<_BottomSheetPosition> {
         duration: widget.disableAnimations
             ? Duration.zero
             : AppDurations.fast,
-        curve: Curves.easeOutCubic,
+        curve: AppCurves.emphasized,
         padding: EdgeInsets.fromLTRB(
           compactMargin + media.viewPadding.left,
           compactMargin + media.viewPadding.top,
@@ -313,6 +313,6 @@ class _DragReleaseCurve extends Curve {
   double transformInternal(double t) {
     if (t <= start || start >= 1) return t;
     final remaining = (t - start) / (1 - start);
-    return start + (1 - start) * Curves.easeOutCubic.transform(remaining);
+    return start + (1 - start) * AppCurves.emphasized.transform(remaining);
   }
 }

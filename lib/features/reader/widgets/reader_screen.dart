@@ -309,7 +309,7 @@ class _ReaderScreenState extends State<ReaderScreen>
       await _scrollController.animateTo(
         targetOffset,
         duration: AppDurations.fast,
-        curve: Curves.easeOutCubic,
+        curve: AppCurves.emphasized,
       );
     } catch (_) {
       // A newer search result or route disposal can cancel this animation.
