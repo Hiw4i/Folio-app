@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart' show GestureBinding, PointerEvent;
 import 'package:flutter/material.dart'
     show
         ContextMenuButtonItem,
@@ -9,6 +10,7 @@ import 'package:flutter/material.dart'
         TextSelectionThemeData,
         Theme,
         materialTextSelectionHandleControls;
+import 'package:flutter/services.dart' show HapticFeedback;
 import 'package:flutter/widgets.dart';
 import 'package:pdfrx/pdfrx.dart';
 
@@ -48,12 +50,28 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   final Map<int, List<Rect>> _paintedSelectionRects = <int, List<Rect>>{};
   bool _selectionRepaintScheduled = false;
 
+  /// Identity of the range currently painted (`page#index` pairs). pdfrx
+  /// rebuilds a fresh [PdfTextSelectionRange] on every read, so its value
+  /// equality cannot be used to detect changes.
+  String? _liveSelectionKey;
+  Timer? _selectionPollTimer;
+
+  /// Long press selects a word only after the page text is extracted, which can
+  /// outlast the pointer events. Poll for a short bounded window so the
+  /// highlight appears as soon as the word is selected.
+  static const int _selectionPollTicks = 75;
+
   /// Page text is immutable and expensive to extract. Multi-page selections
   /// keep one entry per page and evict the oldest pages beyond this bound.
   static const int _pageTextCacheLimit = 24;
 
   @override
   void dispose() {
+    GestureBinding.instance.pointerRouter.removeGlobalRoute(
+      _pointerRouterEvent,
+    );
+    _stopSelectionPolling();
+    _liveSelectionKey = null;
     // PdfViewerController has no dispose in pdfrx 2.6.1 (owned by PdfViewer
     // while mounted): drop our selection caches so a disposed state never
     // retains page text/rects across documents.
@@ -70,6 +88,8 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     // Cached page text belongs to one document. The widget carries no key, so
     // a renderer swap reuses this state and must not keep stale page text.
     if (!identical(widget.renderer, oldWidget.renderer)) {
+      _stopSelectionPolling();
+      _liveSelectionKey = null;
       _selectedPageText.clear();
       _loadingSelectedPages.clear();
       _paintedSelectionRects.clear();
@@ -81,6 +101,9 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   @override
   void initState() {
     super.initState();
+    // Global pointer routes are dispatched after the gesture recognizers, so
+    // pdfrx has already moved its selection by the time this runs.
+    GestureBinding.instance.pointerRouter.addGlobalRoute(_pointerRouterEvent);
     _params = PdfViewerParams(
       margin: 0,
       layoutPages: layoutPdfReadingPages,
@@ -105,6 +128,12 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
         enableSelectionHandles: true,
         showContextMenuAutomatically: true,
         onTextSelectionChange: _textSelectionChanged,
+        // pdfrx debounces `onTextSelectionChange` by 300 ms, so read the live
+        // range from the handle callbacks to paint the highlight while the
+        // handle is still moving.
+        onSelectionHandlePanStart: (_) => _applyLiveSelection(),
+        onSelectionHandlePanUpdate: (_, _) => _applyLiveSelection(),
+        onSelectionHandlePanEnd: (_) => _applyLiveSelection(),
         // Use the same Material handle geometry as SelectionArea in MD/TXT.
         buildSelectionHandle: (context, anchor, state) {
           final leading = anchor.type == PdfTextSelectionAnchorType.a;
@@ -188,12 +217,56 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   }
 
   void _textSelectionChanged(PdfTextSelection selection) {
-    _selectingText = selection.hasSelectedText;
-    _selectedRange = selection.textSelectionPointRange;
+    // Final fallback: pdfrx reports the settled selection 300 ms after the last
+    // update. Live drags are applied earlier through [_applyLiveSelection].
+    _applySelection(selection.textSelectionPointRange);
+  }
+
+  /// Copies the live selection range from pdfrx into our paint state.
+  ///
+  /// pdfrx tracks the drag/handle selection synchronously but only reports it
+  /// through [PdfTextSelectionParams.onTextSelectionChange] after its 300 ms
+  /// debounce, which is why the rounded highlight used to appear only once the
+  /// finger was released.
+  void _applyLiveSelection() {
+    if (!mounted || !_controller.isReady) return;
+    final delegate = _controller.textSelectionDelegate;
+    _applySelection(
+      delegate.hasSelectedText ? delegate.textSelectionPointRange : null,
+    );
+  }
+
+  void _pointerRouterEvent(PointerEvent event) {
+    // Only pointer events can move a text selection.
+    if (event is PointerDownEvent ||
+        event is PointerMoveEvent ||
+        event is PointerUpEvent ||
+        event is PointerCancelEvent) {
+      _applyLiveSelection();
+    }
+  }
+
+  static String? _selectionKey(PdfTextSelectionRange? range) {
+    if (range == null) return null;
+    return '${range.start.text.pageNumber}#${range.start.index}'
+        '-${range.end.text.pageNumber}#${range.end.index}';
+  }
+
+  void _applySelection(PdfTextSelectionRange? range) {
+    final key = _selectionKey(range);
+    if (key == _liveSelectionKey) return;
+    final hadSelection = _selectedRange != null;
+    _liveSelectionKey = key;
+    _selectedRange = range;
+    _selectingText = range != null;
     _paintedSelectionRects.clear();
+    if (range == null) {
+      if (hadSelection) _scheduleSelectionRepaint();
+      return;
+    }
+    // Same tick as the shared selection in MD/TXT/PPTX/DOCX.
+    unawaited(HapticFeedback.selectionClick());
     _scheduleSelectionRepaint();
-    final range = _selectedRange;
-    if (range == null) return;
     // Keep the page text cached across drag updates. Clearing it on every
     // change made the middle pages of a multi-page selection reload while the
     // handles moved, and a load that finished after the next update was
@@ -208,6 +281,43 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
         _selectedPageText.remove(_selectedPageText.keys.first);
       }
     }
+  }
+
+  /// A long press picks a word only after its page text has been extracted,
+  /// which may finish after the pointer routed events are over.
+  void _watchLongPressSelection() {
+    _selectionPollTimer?.cancel();
+    if (!_controller.isReady) return;
+    // A previous selection stays active until the new word is resolved, so wait
+    // for the range to change rather than for any selection to exist.
+    final initialKey = _liveSelectionKey;
+    var ticks = 0;
+    void poll(Timer _) {
+      if (!mounted || !_controller.isReady) {
+        _stopSelectionPolling();
+        return;
+      }
+      final delegate = _controller.textSelectionDelegate;
+      final range = delegate.hasSelectedText
+          ? delegate.textSelectionPointRange
+          : null;
+      if (_selectionKey(range) != initialKey) {
+        _applySelection(range);
+        _stopSelectionPolling();
+        return;
+      }
+      if (++ticks >= _selectionPollTicks) _stopSelectionPolling();
+    }
+
+    _selectionPollTimer = Timer.periodic(
+      const Duration(milliseconds: 16),
+      poll,
+    );
+  }
+
+  void _stopSelectionPolling() {
+    _selectionPollTimer?.cancel();
+    _selectionPollTimer = null;
   }
 
   /// pdfrx paints the page overlays from a page paint callback, and pages only
@@ -376,6 +486,9 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       debugPrint('Folio PDF selection action failed: $error');
     } finally {
       _selectionActionRunning = false;
+      // Select-all updates the range asynchronously; pick it up without waiting
+      // for pdfrx's debounced change callback.
+      _applyLiveSelection();
     }
   }
 
@@ -387,12 +500,19 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     switch (details.type) {
       case PdfViewerGeneralTapType.tap:
         if (!_selectingText) widget.onContentTap();
+        // pdfrx clears the selection after this callback (on the gesture arena
+        // sweep), so re-read the live range once the tap has fully resolved.
+        scheduleMicrotask(_applyLiveSelection);
         return false;
       case PdfViewerGeneralTapType.doubleTap:
         unawaited(controller.zoomUp(loop: true));
         return true;
-      case PdfViewerGeneralTapType.longPress ||
-          PdfViewerGeneralTapType.secondaryTap:
+      case PdfViewerGeneralTapType.longPress:
+        if (details.tapOn == PdfViewerPart.nonSelectedText) {
+          _watchLongPressSelection();
+        }
+        return false;
+      case PdfViewerGeneralTapType.secondaryTap:
         return false;
     }
   }
