@@ -34,7 +34,7 @@ Future<void> writeFileAtomically(
     if (await destination.exists()) {
       try {
         await _bestEffortDelete(backup);
-        await destination.rename(backup.path);
+        await _renameWithRetry(destination, backup.path);
       } on FileSystemException {
         // The backup itself could not be made: the destination is untouched,
         // so failing here is safe.
@@ -42,7 +42,7 @@ Future<void> writeFileAtomically(
       }
     }
     try {
-      await temporary.rename(destination.path);
+      await _renameWithRetry(temporary, destination.path);
       replaced = true;
     } on FileSystemException {
       // The swap failed after the backup was made. The destination must not
@@ -52,7 +52,7 @@ Future<void> writeFileAtomically(
         if (await destination.exists()) {
           await destination.delete();
         }
-        await backup.rename(destination.path);
+        await _renameWithRetry(backup, destination.path);
       }
       rethrow;
     }
@@ -64,6 +64,35 @@ Future<void> writeFileAtomically(
     // If !replaced and the backup still exists, the restore above failed.
     // Keeping the backup is deliberate: it is the only surviving copy, and
     // the next successful write reclaims the name.
+  }
+}
+
+const List<Duration> _renameRetryDelays = <Duration>[
+  Duration(milliseconds: 25),
+  Duration(milliseconds: 50),
+  Duration(milliseconds: 100),
+];
+
+/// Renames [source] onto [target], retrying briefly on failure.
+///
+/// Windows keeps a freshly deleted path in a short "delete pending" state
+/// during which renames onto it fail with ACCESS_DENIED, and antivirus
+/// scanners hold destination files transiently for the same reason. The
+/// bounded backoff rides out that window; a permanently invalid target (a
+/// directory squatting the name, a read-only parent) still fails fast.
+Future<void> _renameWithRetry(File source, String target) async {
+  var attempt = 0;
+  while (true) {
+    try {
+      await source.rename(target);
+      return;
+    } on FileSystemException {
+      if (attempt >= _renameRetryDelays.length) {
+        rethrow;
+      }
+      await Future<void>.delayed(_renameRetryDelays[attempt]);
+      attempt += 1;
+    }
   }
 }
 

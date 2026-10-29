@@ -7,21 +7,26 @@ import 'package:flutter/widgets.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 import 'package:scroll_to_index/scroll_to_index.dart';
 
+import '../../../shared/diagnostics/app_log.dart';
 import '../../../shared/glass/liquid_glass.dart';
 import '../../../shared/settings/folio_settings_scope.dart';
 import '../../../shared/theme/folio_theme.dart';
-import '../../../shared/widgets/folio_status_view.dart';
 import '../../library/data/document_entry.dart';
 import '../data/document_content_source.dart';
+import '../logic/chrome_visibility.dart';
 import '../logic/document_renderer.dart';
 import '../logic/reader_state.dart';
 import '../logic/renderer_lifecycle.dart';
+import '../logic/title_truncation.dart';
 import '../pdf/widgets/pdf_document_view.dart';
 import '../powerpoint/widgets/powerpoint_document_view.dart';
 import '../text/widgets/text_document_view.dart';
 import '../word/widgets/word_document_view.dart';
 import 'file_info_sheet.dart';
 import 'reader_chrome.dart';
+import 'reader_menu_overlays.dart';
+import 'reader_search_navigator.dart';
+import 'reader_status_views.dart';
 import 'reader_loading_view.dart';
 import 'reader_scrubber.dart';
 
@@ -100,7 +105,8 @@ class _ReaderScreenState extends State<ReaderScreen>
   Duration? _contentPointerStarted;
   bool _textSelectionActive = false;
   bool _chromeReducedMotion = false;
-  double _chromeScrollIntent = 0;
+  final ChromeScrollIntentAccumulator _scrollIntent =
+      ChromeScrollIntentAccumulator(threshold: ReaderChromeSpec.scrollIntentDistance);
   bool _showNavigationOnScrollUp = true;
 
   @override
@@ -149,7 +155,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     if (showOnScrollUp != _showNavigationOnScrollUp) {
       _showNavigationOnScrollUp = showOnScrollUp;
       // A preference change must not complete a half-recorded scroll intent.
-      _chromeScrollIntent = 0;
+      _scrollIntent.reset();
     }
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     if (reducedMotion != _chromeReducedMotion) {
@@ -164,7 +170,7 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 
   void _setChromeTarget(bool visible) {
-    _chromeScrollIntent = 0;
+    _scrollIntent.reset();
     if (_chromeTarget == visible) {
       return;
     }
@@ -241,7 +247,10 @@ class _ReaderScreenState extends State<ReaderScreen>
           preferPosition: AutoScrollPosition.begin,
           duration: reducedMotion ? Duration.zero : AppDurations.fast,
         );
-      } catch (_) {
+      } catch (error, stack) {
+        // Route disposal can invalidate the target between scheduling and
+        // scrolling; debug-only visibility, the failure is expected.
+        AppLog.d('Active-hit scroll skipped: $error\n$stack');
         return;
       }
     }
@@ -311,8 +320,9 @@ class _ReaderScreenState extends State<ReaderScreen>
         duration: AppDurations.fast,
         curve: AppCurves.emphasized,
       );
-    } catch (_) {
+    } catch (error, stack) {
       // A newer search result or route disposal can cancel this animation.
+      AppLog.d('Active-hit reveal animation skipped: $error\n$stack');
     }
   }
 
@@ -337,7 +347,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     _menuKey.currentState?.close();
     _exitKey.currentState?.close();
     _clearContentPointer();
-    _chromeScrollIntent = 0;
+    _scrollIntent.reset();
     try {
       await showFolioFileInfoSheet(context, document: widget.document);
     } finally {
@@ -414,7 +424,7 @@ class _ReaderScreenState extends State<ReaderScreen>
       }
     } else if (notification is ScrollStartNotification ||
         notification is ScrollEndNotification) {
-      _chromeScrollIntent = 0;
+      _scrollIntent.reset();
     }
     return false;
   }
@@ -435,31 +445,17 @@ class _ReaderScreenState extends State<ReaderScreen>
         !delta.isFinite ||
         delta == 0) {
       if (!_showNavigationOnScrollUp) {
-        _chromeScrollIntent = 0;
+        _scrollIntent.reset();
       }
       return;
     }
-    final threshold = ReaderChromeSpec.scrollIntentDistance;
-    if (_chromeTarget) {
-      if (delta <= 0 || !canHide) {
-        _chromeScrollIntent = 0;
-        return;
-      }
-      _chromeScrollIntent = (_chromeScrollIntent + delta).clamp(0, threshold);
-      if (_chromeScrollIntent >= threshold) {
-        _chromeScrollIntent = 0;
+    switch (_scrollIntent.record(delta, visible: _chromeTarget, canHide: canHide)) {
+      case ChromeVisibilityCommand.hide:
         _setChromeTarget(false);
-      }
-      return;
-    }
-    if (delta >= 0) {
-      _chromeScrollIntent = 0;
-      return;
-    }
-    _chromeScrollIntent = (_chromeScrollIntent + delta).clamp(-threshold, 0);
-    if (_chromeScrollIntent <= -threshold) {
-      _chromeScrollIntent = 0;
-      _setChromeTarget(true);
+      case ChromeVisibilityCommand.show:
+        _setChromeTarget(true);
+      case ChromeVisibilityCommand.stay:
+        break;
     }
   }
 
@@ -543,7 +539,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     _textSelectionActive = active;
     if (active) {
       _contentPointerMoved = true;
-      _chromeScrollIntent = 0;
+      _scrollIntent.reset();
     }
   }
 
@@ -598,7 +594,7 @@ class _ReaderScreenState extends State<ReaderScreen>
         child: Stack(
           fit: StackFit.expand,
           children: <Widget>[
-            const _ReaderBackground(),
+            const ReaderBackground(),
             Listener(
               behavior: HitTestBehavior.translucent,
               onPointerDown: _contentPointerDown,
@@ -649,7 +645,8 @@ class _ReaderScreenState extends State<ReaderScreen>
                           return ValueListenableBuilder<int>(
                             valueListenable: _progressPercent,
                             builder: (context, percent, _) {
-                              return _ProgressPill(
+                              return ReaderProgressPill(
+                                key: const ValueKey<String>('reader_progress_glass'),
                                 label: _renderer is TextDocumentRenderer
                                     ? '$percent%'
                                     : _renderer is PdfDocumentRenderer
@@ -742,7 +739,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                               size: 24,
                             ),
                           ),
-                          expandedChild: _ReaderExitMenu(
+                          expandedChild: ReaderExitMenu(
                             openedExternally: widget.openedExternally,
                             onReturnToMain: _returnToMain,
                             onCloseApp: _closeApp,
@@ -797,8 +794,8 @@ class _ReaderScreenState extends State<ReaderScreen>
                               expandedCornerRadius: 24,
                             );
                           },
-                          collapsedChild: const Center(child: _MenuGlyph()),
-                          expandedChild: _ReaderMenuContent(
+                          collapsedChild: const Center(child: ReaderMenuGlyph()),
+                          expandedChild: ReaderMenuContent(
                             onFileInfo: () => unawaited(_openFileInfo()),
                             onRemove: () {
                               _menuKey.currentState?.close();
@@ -852,7 +849,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                               child: ExcludeSemantics(
                                 excluding: !gated,
                                 child: hasQuery
-                                    ? _SearchNavigator(renderer: _renderer)
+                                    ? ReaderSearchNavigator(renderer: _renderer)
                                     : const SizedBox.shrink(),
                               ),
                             ),
@@ -905,7 +902,7 @@ class _ReaderBody extends StatelessWidget {
     // mounted underneath and crossfades: the WebView's own HTML status is
     // never shown (transparent background, opacity 0 until ready).
     if (renderer.loadState == ReaderLoadState.failed) {
-      return _ReaderFailureView(
+      return ReaderFailureView(
         failure: renderer.failure!,
         onRetry: renderer.open,
       );
@@ -917,7 +914,7 @@ class _ReaderBody extends StatelessWidget {
       }
       final content = text.content;
       if (content == null || content.chunks.isEmpty) {
-        return const _ReaderStatus(
+        return const ReaderStatusView(
           title: 'Nothing to display',
           message: 'This document has no readable content.',
         );
@@ -966,7 +963,7 @@ class _ReaderBody extends StatelessWidget {
       return _OfficeStagedView(renderer: office, view: view);
     }
     if (renderer.loadState == ReaderLoadState.ready) {
-      return const _ReaderStatus(
+      return const ReaderStatusView(
         title: 'Nothing to display',
         message: 'This document has no readable content.',
       );
@@ -1078,103 +1075,11 @@ class _OfficeStagedViewState extends State<_OfficeStagedView> {
 /// Horizontal padding inside the reader title pill (18pt each side).
 const double _titlePadding = 36;
 
-const TextStyle _titleMeasureStyle = TextStyle(
-  fontFamily: 'Inter',
-  color: Color(0xFFF4F3EF),
-  fontSize: 14,
-  fontWeight: FontWeight.w500,
-  letterSpacing: -0.1,
-);
-
-/// Width cache for title truncation: `_TopChromeContent` runs inside a
-/// `LayoutBuilder` on every chrome tick/resize and binary-searches the
-/// truncation point, so uncached `TextPainter.layout` would allocate dozens
-/// of painters per frame. Bounded to 256 entries, evicted wholesale.
-final Map<String, double> _titleWidthCache = <String, double>{};
-
-double _measureTitleWidth(
-  String text,
-  TextDirection direction,
-  TextScaler scaler,
-) {
-  final scale = (scaler.scale(14) / 14).toStringAsFixed(3);
-  final key = '$text|${direction.index}|$scale';
-  final cached = _titleWidthCache[key];
-  if (cached != null) {
-    return cached;
-  }
-  final painter = TextPainter(
-    text: TextSpan(text: text, style: _titleMeasureStyle),
-    maxLines: 1,
-    textDirection: direction,
-    textScaler: scaler,
-  )..layout();
-  final width = painter.width;
-  painter.dispose();
-  if (_titleWidthCache.length > 256) {
-    _titleWidthCache.clear();
-  }
-  _titleWidthCache[key] = width;
-  return width;
-}
-
-/// Truncates a file name to [maxWidth], keeping the extension readable:
-/// `(Edited) Моя психика в социальн...pdf`, `Как сделать вку...txt`.
-/// Names without a usable extension fall back to a plain end-ellipsis.
-String _truncateTitle(
-  String name,
-  double maxWidth,
-  TextDirection direction,
-  TextScaler scaler,
-) {
-  double widthOf(String text) => _measureTitleWidth(text, direction, scaler);
-  if (maxWidth <= 0) {
-    return '…';
-  }
-  if (widthOf(name) <= maxWidth) {
-    return name;
-  }
-  final dot = name.lastIndexOf('.');
-  if (dot <= 0 || dot == name.length - 1) {
-    return _truncateWithSuffix(name, '…', maxWidth, widthOf);
-  }
-  final stem = name.substring(0, dot);
-  final ext = name.substring(dot + 1);
-  return _truncateWithSuffix(stem, '...$ext', maxWidth, widthOf);
-}
-
-String _truncateWithSuffix(
-  String stem,
-  String suffix,
-  double maxWidth,
-  double Function(String text) widthOf,
-) {
-  if (widthOf(suffix) > maxWidth) {
-    // Extreme narrowness: even the suffix alone doesn't fit — shrink it.
-    var lo = 0;
-    var hi = suffix.length;
-    while (lo < hi) {
-      final mid = (lo + hi + 1) >> 1;
-      if (widthOf('${suffix.substring(0, mid)}…') <= maxWidth) {
-        lo = mid;
-      } else {
-        hi = mid - 1;
-      }
-    }
-    return '${suffix.substring(0, lo)}…';
-  }
-  var lo = 0;
-  var hi = stem.length;
-  while (lo < hi) {
-    final mid = (lo + hi + 1) >> 1;
-    if (widthOf('${stem.substring(0, mid)}$suffix') <= maxWidth) {
-      lo = mid;
-    } else {
-      hi = mid - 1;
-    }
-  }
-  return '${stem.substring(0, lo)}$suffix';
-}
+/// Shared truncation + measurement cache for the reader title pill: it runs
+/// inside a `LayoutBuilder` on every chrome tick/resize and binary-searches
+/// the truncation point, so uncached `TextPainter.layout` would allocate
+/// dozens of painters per frame.
+final TitleTruncator _titleTruncator = TitleTruncator();
 
 class _TopChromeContent extends StatelessWidget {
   const _TopChromeContent({required this.document});
@@ -1201,6 +1106,7 @@ class _TopChromeContent extends StatelessWidget {
             builder: (context, constraints) {
               final direction = Directionality.of(context);
               final textScaler = MediaQuery.textScalerOf(context);
+              final style = _titleStyle(context);
               final maxTextWidth = (constraints.maxWidth - _titlePadding).clamp(
                 0.0,
                 double.infinity,
@@ -1209,14 +1115,16 @@ class _TopChromeContent extends StatelessWidget {
               // shell overflows the material box), so the label is truncated
               // up front and the Text gets a tight box: `ellipsis` alone
               // would never engage and the text would bleed past the glass.
-              final label = _truncateTitle(
+              final label = _titleTruncator.truncate(
                 document.name,
+                style,
                 maxTextWidth,
                 direction,
                 textScaler,
               );
-              final labelWidth = _measureTitleWidth(
+              final labelWidth = _titleTruncator.measure(
                 label,
+                style,
                 direction,
                 textScaler,
               );
@@ -1247,7 +1155,7 @@ class _TopChromeContent extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         textAlign: TextAlign.center,
-                        style: _titleStyle(context),
+                        style: style,
                       ),
                     ),
                   ),
@@ -1279,378 +1187,5 @@ class _LiquidChromeObject extends StatelessWidget {
     // OverflowBox: оптическая оболочка выступает за [size] без клиппинга).
     // Зона захвата — дефолтные 8pt, как у меню: палец цепляется одинаково.
     return LiquidGlassControl(size: size, child: child);
-  }
-}
-
-class _ProgressPill extends StatelessWidget {
-  const _ProgressPill({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return _LiquidChromeObject(
-      key: const ValueKey<String>('reader_progress_glass'),
-      size: const Size(62, 38),
-      child: Center(
-        child: AdaptiveGlassText(label, style: AppTextStyles.smallDim(context)),
-      ),
-    );
-  }
-}
-
-class _SearchNavigator extends StatelessWidget {
-  const _SearchNavigator({required this.renderer});
-
-  final DocumentRenderer renderer;
-
-  static TextStyle _labelStyle(BuildContext context) => TextStyle(
-    fontFamily: 'Inter',
-    color: appColors.textPrimary,
-    fontSize: 12.5,
-    fontWeight: FontWeight.w500,
-  );
-  static const double _height = 46;
-  static const double _leftPadding = 15;
-  static const double _rightPadding = 6;
-  static const double _gap = 8;
-  static const double _buttonWidth = 34;
-
-  /// Label width cache: this widget rebuilds on every renderer notify
-  /// (each keystroke/page change). Labels are a tiny closed set
-  /// (`Searching…`, `No matches`, `N of M`), so cache the text width.
-  static final Map<String, double> _labelWidthCache = <String, double>{};
-
-  static double _measuredLabelWidth(
-    String label,
-    TextStyle style,
-    TextDirection direction,
-    TextScaler scaler,
-  ) {
-    final scale = (scaler.scale(12.5) / 12.5).toStringAsFixed(3);
-    final key = '$label|${direction.index}|$scale';
-    final cached = _labelWidthCache[key];
-    if (cached != null) {
-      return cached;
-    }
-    final textPainter = TextPainter(
-      text: TextSpan(text: label, style: style),
-      textDirection: direction,
-      textScaler: scaler,
-    )..layout();
-    final width = textPainter.width;
-    textPainter.dispose();
-    if (_labelWidthCache.length > 64) {
-      _labelWidthCache.clear();
-    }
-    _labelWidthCache[key] = width;
-    return width;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final currentRenderer = renderer;
-    final label = currentRenderer.isSearching
-        ? 'Searching…'
-        : currentRenderer is PdfDocumentRenderer &&
-              currentRenderer.hasNoSearchableText
-        ? 'No searchable text'
-        : currentRenderer is OfficeDocumentRendererBase &&
-              currentRenderer.hasNoSearchableText
-        ? 'No searchable text'
-        : currentRenderer.hitCount == 0
-        ? 'No matches'
-        : '${currentRenderer.activeHitIndex + 1} of ${currentRenderer.hitCount}';
-    final labelWidth = _measuredLabelWidth(
-      label,
-      _labelStyle(context),
-      Directionality.of(context),
-      MediaQuery.textScalerOf(context),
-    );
-    final width =
-        _leftPadding + labelWidth + _gap + _buttonWidth * 2 + _rightPadding + 4;
-    return LiquidGlass.fixed(
-      key: const ValueKey<String>('reader_search_navigator_glass'),
-      size: Size(width, _height),
-      // LiquidGlass gives the shadow an oversized paint box. Keep this
-      // cluster tight to the material dimensions so the Row cannot expand
-      // into that paint padding and drift out of the pill.
-      child: SizedBox(
-        width: width,
-        height: _height,
-        child: Padding(
-          padding: const EdgeInsets.only(
-            left: _leftPadding,
-            right: _rightPadding,
-          ),
-          child: Row(
-            children: <Widget>[
-              AdaptiveGlassText(
-                key: const ValueKey<String>('reader_search_count'),
-                label,
-                style: _labelStyle(context),
-              ),
-              const SizedBox(width: _gap),
-              _SearchStepButton(
-                key: const ValueKey<String>('reader_previous_hit'),
-                label: 'Previous match',
-                icon: LucideIcons.chevronUp,
-                enabled: currentRenderer.hitCount > 0,
-                onTap: currentRenderer.showPreviousHit,
-              ),
-              _SearchStepButton(
-                key: const ValueKey<String>('reader_next_hit'),
-                label: 'Next match',
-                icon: LucideIcons.chevronDown,
-                enabled: currentRenderer.hitCount > 0,
-                onTap: currentRenderer.showNextHit,
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SearchStepButton extends StatelessWidget {
-  const _SearchStepButton({
-    required this.label,
-    required this.icon,
-    required this.enabled,
-    required this.onTap,
-    super.key,
-  });
-
-  final String label;
-  final IconData icon;
-  final bool enabled;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: _SearchNavigator._buttonWidth,
-      height: _SearchNavigator._height,
-      child: Semantics(
-        button: true,
-        enabled: enabled,
-        label: label,
-        onTap: enabled ? onTap : null,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: enabled ? onTap : null,
-          child: Center(
-            child: AdaptiveGlassEffects(
-              opacity: enabled ? 1 : 0.38,
-              child: AdaptiveGlassIcon(icon, size: 16),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _MenuGlyph extends StatelessWidget {
-  const _MenuGlyph();
-
-  @override
-  Widget build(BuildContext context) {
-    return const AdaptiveGlassIcon(LucideIcons.moreVertical, size: 20);
-  }
-}
-
-class _ReaderExitMenu extends StatelessWidget {
-  const _ReaderExitMenu({
-    required this.openedExternally,
-    required this.onReturnToMain,
-    required this.onCloseApp,
-  });
-
-  final bool openedExternally;
-  final VoidCallback onReturnToMain;
-  final VoidCallback onCloseApp;
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = openedExternally
-        ? _MenuAction(
-            label: 'Close app',
-            icon: LucideIcons.x,
-            onTap: onCloseApp,
-          )
-        : _MenuAction(
-            label: 'Return to main',
-            icon: LucideIcons.chevronLeft,
-            onTap: onReturnToMain,
-          );
-    final secondary = openedExternally
-        ? _MenuAction(
-            label: 'Return to main',
-            icon: LucideIcons.chevronLeft,
-            onTap: onReturnToMain,
-          )
-        : _MenuAction(
-            label: 'Close app',
-            icon: LucideIcons.x,
-            onTap: onCloseApp,
-          );
-    return Padding(
-      padding: AppSpacing.settingsRowPadding,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[primary, secondary],
-      ),
-    );
-  }
-}
-
-class _ReaderMenuContent extends StatelessWidget {
-  const _ReaderMenuContent({required this.onFileInfo, required this.onRemove});
-
-  final VoidCallback onFileInfo;
-  final VoidCallback onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: AppSpacing.settingsRowPadding,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          _MenuAction(label: 'File info', onTap: onFileInfo),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-            child: SizedBox(
-              height: 1,
-              child: AdaptiveGlassDecoration(
-                child: ColoredBox(color: appColors.separator),
-              ),
-            ),
-          ),
-          _MenuAction(label: 'Remove from Recents', onTap: onRemove),
-        ],
-      ),
-    );
-  }
-}
-
-class _MenuAction extends StatelessWidget {
-  const _MenuAction({required this.label, required this.onTap, this.icon});
-
-  final String label;
-  final VoidCallback onTap;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Semantics(
-      button: true,
-      label: label,
-      onTap: onTap,
-      excludeSemantics: true,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: SizedBox(
-          height: 48,
-          child: Align(
-            alignment: Alignment.centerLeft,
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-              child: Row(
-                children: <Widget>[
-                  if (icon case final icon?) ...<Widget>[
-                    AdaptiveGlassIcon(icon, size: 16),
-                    const SizedBox(width: 10),
-                  ],
-                  Expanded(
-                    child: AdaptiveGlassText(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.bodyStrong(context),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ReaderFailureView extends StatelessWidget {
-  const _ReaderFailureView({required this.failure, required this.onRetry});
-
-  final ReaderFailure failure;
-  final Future<void> Function() onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return _ReaderStatus(
-      title: failure.title,
-      message: failure.message,
-      action: failure.canRetry
-          ? LiquidGlassButton(
-              label: 'Try again',
-              width: 132,
-              height: 50,
-              onTap: () => unawaited(onRetry()),
-            )
-          : null,
-    );
-  }
-}
-
-class _ReaderStatus extends StatelessWidget {
-  const _ReaderStatus({
-    required this.title,
-    required this.message,
-    this.action,
-  });
-
-  final String title;
-  final String message;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(
-          AppSpacing.xxxxl,
-          AppSpacing.xxxxxl + AppSpacing.xl,
-          AppSpacing.xxxxl,
-          AppSpacing.xxxxxl + AppSpacing.xl + AppSpacing.lg,
-        ),
-        child: FolioStatusView(title: title, message: message, action: action),
-      ),
-    );
-  }
-}
-
-class _ReaderBackground extends StatelessWidget {
-  const _ReaderBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: <Color>[
-            const Color(0xFF121315),
-            appColors.background,
-            const Color(0xFF08090A),
-          ],
-          stops: <double>[0, 0.34, 1],
-        ),
-      ),
-    );
   }
 }
