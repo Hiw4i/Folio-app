@@ -136,7 +136,10 @@
       const pages = visiblePages?.() || [content];
       for (const page of pages) {
         const bounds = page.getBoundingClientRect();
-        if (bounds.bottom < top || bounds.top > top + height
+        // Hidden pptx slide frames (display:none) measure 0x0: no visible
+        // selection can live there, so skip the text walk entirely.
+        if (bounds.width <= 0 || bounds.height <= 0
+            || bounds.bottom < top || bounds.top > top + height
             || bounds.right < left || bounds.left > left + width
             || !selected.intersectsNode(page)) continue;
         const walker = document.createTreeWalker(page, NodeFilter.SHOW_TEXT);

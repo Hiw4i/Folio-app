@@ -98,12 +98,10 @@ body[data-format="docx"] .docx-wrapper > section.docx[data-folio-page] {
 }
 
 body[data-format="pptx"] #viewport {
-  overflow-x: auto;
-  overflow-y: hidden;
-  scroll-snap-type: x mandatory;
-  /* Смена слайдов мгновенная, без анимации перелистывания. */
-  scroll-behavior: auto;
-  touch-action: pan-x pinch-zoom;
+  /* Слайды не прокручиваются: в раскладке живёт ровно один кадр,
+     смена слайда — мгновенная замена отображаемого кадра (showSlide). */
+  overflow: hidden;
+  touch-action: pinch-zoom;
   padding: 74px 0 108px;
 }
 
@@ -119,28 +117,27 @@ body[data-format="pptx"] #viewport {
 
 body[data-format="pptx"] #document,
 body[data-format="pptx"] #all_slides_warpper {
-  display: flex !important;
-  width: max-content !important;
-  min-width: 100%;
+  display: block !important;
+  width: 100% !important;
   height: 100% !important;
-  align-items: center;
   margin: 0 !important;
   padding: 0 !important;
   background: transparent !important;
 }
 
+/* Ровно один активный кадр участвует в раскладке; остальные полностью
+   выключены — смена слайда это обмен display, а не прокрутка. */
 .folio-slide-frame {
   position: relative;
-  flex: 0 0 100vw;
-  width: 100vw;
+  display: none;
+  width: 100%;
   height: 100%;
+  overflow: hidden;
+}
+
+.folio-slide-frame.is-active {
   display: grid;
   place-items: center;
-  scroll-snap-align: center;
-  scroll-snap-stop: always;
-  overflow: hidden;
-  content-visibility: auto;
-  contain-intrinsic-size: auto 100vw;
 }
 
 .folio-slide-frame > .slide {

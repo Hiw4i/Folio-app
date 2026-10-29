@@ -317,6 +317,10 @@ String _markdownSearchProjection(String source) {
   ).allMatches(source)) {
     hide(match.start, match.end);
   }
+  for (final match in RegExp(r'==(?=\S)(.+?)(?<=\S)==').allMatches(source)) {
+    hide(match.start, match.start + 2);
+    hide(match.end - 2, match.end);
+  }
   for (final match in RegExp(r'[*_~`]').allMatches(source)) {
     hide(match.start, match.end);
   }

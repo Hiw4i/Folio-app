@@ -141,9 +141,7 @@ void _addRoundedOutline(Path path, List<Offset> points, double radius) {
     final incoming = vertex - previous, outgoing = next - vertex;
     final a = incoming.distance, b = outgoing.distance;
     if (a == 0 || b == 0) continue;
-    final cornerRadius = radius
-        .clamp(0, (a < b ? a : b) / 2)
-        .toDouble();
+    final cornerRadius = radius.clamp(0, (a < b ? a : b) / 2).toDouble();
     corners.add((
       before: vertex - incoming / a * cornerRadius,
       vertex: vertex,
@@ -197,32 +195,26 @@ TextSelectionToolbarAnchors folioVisibleSelectionAnchors({
   required Rect viewport,
   required Iterable<Rect> visibleRects,
 }) {
-  final safe = viewport.deflate(12);
+  final rects = visibleRects.where((r) => r.isFinite && !r.isEmpty).toList()
+    ..sort((a, b) => a.top.compareTo(b.top));
   Rect? candidate;
-  for (final rect in visibleRects) {
-    final clipped = rect.intersect(safe);
-    if (!clipped.isEmpty && clipped.isFinite) {
-      candidate = clipped;
+  for (final rect in rects) {
+    if (rect.overlaps(viewport)) {
+      candidate = rect;
       break;
     }
   }
-  final point = candidate == null
-      ? Offset(safe.center.dx, safe.top + 56)
-      : Offset(candidate.center.dx, candidate.top);
-  final below = candidate == null
-      ? point.translate(0, 24)
-      : Offset(candidate.center.dx, candidate.bottom);
-  final existing = original?.primaryAnchor;
-  final primary =
-      existing != null && viewport.contains(existing) && candidate == null
-      ? existing
-      : point;
-  final secondary = original?.secondaryAnchor;
-  return TextSelectionToolbarAnchors(
-    primaryAnchor: primary,
-    secondaryAnchor:
-        secondary != null && viewport.contains(secondary) && candidate == null
-        ? secondary
-        : below,
-  );
+  // Preserve which side the selection is on even when none of it is visible.
+  candidate ??= rects.isEmpty ? null : rects.first;
+  if (candidate != null) {
+    return TextSelectionToolbarAnchors(
+      primaryAnchor: candidate.topCenter,
+      secondaryAnchor: candidate.bottomCenter,
+    );
+  }
+  return original ??
+      TextSelectionToolbarAnchors(
+        primaryAnchor: viewport.center,
+        secondaryAnchor: viewport.center,
+      );
 }

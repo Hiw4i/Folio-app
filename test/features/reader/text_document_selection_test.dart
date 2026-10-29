@@ -1,5 +1,8 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -131,10 +134,7 @@ void main() {
       expect(_regionFinder, findsOneWidget);
       expect(find.byType(SelectableText), findsNothing);
       final copy = await copyCurrentSelection(tester, selectAll: true);
-      expect(copy, contains('Heading'));
-      expect(copy, contains('First paragraph.'));
-      expect(copy, contains('Second paragraph.'));
-      expect(copy, isNot(contains('**')));
+      expect(copy, source);
       expect(tester.takeException(), isNull);
     },
   );
@@ -176,6 +176,129 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('range copy retains heading and emphasis Markdown syntax', (
+    tester,
+  ) async {
+    const source = '# Heading\n\n**Alpha** paragraph.\n\nDo not copy this.';
+    await pumpSelection(
+      tester,
+      source: document(source, markdown: true),
+      child: const SingleChildScrollView(
+        padding: EdgeInsets.all(40),
+        child: MarkdownBody(data: source, selectable: false),
+      ),
+    );
+    final first = tester.getRect(find.text('Heading'));
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.descendant(
+        of: find.text('Alpha paragraph.'),
+        matching: find.byType(RichText),
+      ),
+    );
+    final end = paragraph.localToGlobal(
+      paragraph
+              .getBoxesForSelection(
+                const TextSelection(baseOffset: 0, extentOffset: 5),
+              )
+              .last
+              .toRect()
+              .centerRight -
+          const Offset(.1, 0),
+    );
+    final gesture = await tester.startGesture(
+      first.centerLeft + const Offset(.1, 0),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveTo(end);
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(await copyCurrentSelection(tester), '# Heading\n\n**Alpha**');
+  });
+
+  testWidgets('backward Markdown range copy preserves both source endpoints', (
+    tester,
+  ) async {
+    const source = '# Heading\n\n**Alpha** paragraph.\n\nDo not copy this.';
+    await pumpSelection(
+      tester,
+      source: document(source, markdown: true),
+      child: const SingleChildScrollView(
+        padding: EdgeInsets.all(40),
+        child: MarkdownBody(data: source, selectable: false),
+      ),
+    );
+    final heading = tester.getRect(find.text('Heading'));
+    final paragraph = tester.renderObject<RenderParagraph>(
+      find.descendant(
+        of: find.text('Alpha paragraph.'),
+        matching: find.byType(RichText),
+      ),
+    );
+    final start = paragraph.localToGlobal(
+      paragraph
+              .getBoxesForSelection(
+                const TextSelection(baseOffset: 0, extentOffset: 5),
+              )
+              .last
+              .toRect()
+              .centerRight -
+          const Offset(.1, 0),
+    );
+    final gesture = await tester.startGesture(
+      start,
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveTo(heading.centerLeft + const Offset(.1, 0));
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(await copyCurrentSelection(tester), '# Heading\n\n**Alpha**');
+  });
+
+  testWidgets(
+    'shrinking a bold word does not leave an unmatched Markdown marker',
+    (tester) async {
+      const source = '**Alpha** paragraph.';
+      await pumpSelection(
+        tester,
+        source: document(source, markdown: true),
+        child: const SingleChildScrollView(
+          padding: EdgeInsets.all(40),
+          child: MarkdownBody(data: source, selectable: false),
+        ),
+      );
+      final paragraph = tester.renderObject<RenderParagraph>(
+        find.descendant(
+          of: find.text('Alpha paragraph.'),
+          matching: find.byType(RichText),
+        ),
+      );
+      final word = paragraph
+          .getBoxesForSelection(
+            const TextSelection(baseOffset: 0, extentOffset: 5),
+          )
+          .first
+          .toRect();
+      final interior = paragraph
+          .getBoxesForSelection(
+            const TextSelection(baseOffset: 0, extentOffset: 2),
+          )
+          .first
+          .toRect();
+      // Long press moves by whole words, so it can only keep the full styled
+      // node. A character-level mouse drag genuinely shrinks the range.
+      final gesture = await tester.startGesture(
+        paragraph.localToGlobal(word.centerLeft + const Offset(.1, 0)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveTo(
+        paragraph.localToGlobal(interior.centerRight - const Offset(.1, 0)),
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(await copyCurrentSelection(tester), 'Al');
+    },
+  );
+
   testWidgets('Select all stays complete after scrolling a lazy list', (
     tester,
   ) async {
@@ -213,7 +336,9 @@ void main() {
           tester.element(_regionFinder),
           region,
         ) as FolioSelectionToolbar;
-    expect(menu.anchors.primaryAnchor.dy, inInclusiveRange(0, 600));
+    // Logical anchors can leave the viewport; toolbar layout clamps its
+    // animated position without switching the selection to the opposite edge.
+    expect(menu.anchors.primaryAnchor.dy.isFinite, isTrue);
     // Invoke the existing selection's Copy; deliberately do not selectAll again.
     expect(await copyCurrentSelection(tester), lines.join('\n'));
     expect(tester.takeException(), isNull);
@@ -236,6 +361,13 @@ void main() {
     final value = markdownSelectionText('| A | B |\n| --- | --- |\n| X | Y |');
     expect(value, contains('A\tB'));
     expect(value, contains('X\tY'));
+  });
+
+  test('Markdown full Copy unwraps == highlighted text', () {
+    final value = markdownSelectionText(
+      'Plain ==marked== and ==spaced phrase==.',
+    );
+    expect(value, 'Plain marked and spaced phrase.');
   });
 
   List<Rect> highlightRects(WidgetTester tester) {
@@ -316,5 +448,72 @@ void main() {
     }
     expect(folioSelectionPath(rects).computeMetrics().length, 1);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('wrapped heading keeps its short last line while scrolling', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      await (FontLoader(
+        'Inter',
+      )..addFont(rootBundle.load('assets/fonts/Inter.ttf'))).load();
+    });
+    final scroll = ScrollController();
+    addTearDown(scroll.dispose);
+    const heading = 'A wide heading with many words\ncode';
+    const body = 'First paragraph with enough words to select.';
+    await pumpSelection(
+      tester,
+      source: document('$heading\n\n$body'),
+      child: SingleChildScrollView(
+        controller: scroll,
+        padding: const EdgeInsets.all(40),
+        child: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Text(
+              heading,
+              style: TextStyle(fontFamily: 'Inter', fontSize: 30, height: 1.18),
+            ),
+            SizedBox(height: 13),
+            Text(body, style: TextStyle(fontSize: 17, height: 1.58)),
+            SizedBox(height: 1400),
+          ],
+        ),
+      ),
+    );
+    final initial = await dragAcross(tester, from: heading, to: body);
+    final headingParagraph = tester.renderObject<RenderParagraph>(
+      find.descendant(of: find.text(heading), matching: find.byType(RichText)),
+    );
+    final lastLine = headingParagraph
+        .getBoxesForSelection(
+          const TextSelection(
+            baseOffset: heading.length - 4,
+            extentOffset: heading.length,
+          ),
+          boxHeightStyle: ui.BoxHeightStyle.strut,
+        )
+        .last
+        .toRect();
+    final expectedWidth = lastLine.width;
+    for (final offset in <double>[0, .25, 13, 25, 38, 80, 120]) {
+      List<Rect>? painted;
+      // Inspect the paint frame before Scrollable's deferred geometry refresh.
+      tester.binding.addPostFrameCallback((_) {
+        painted = highlightRects(tester);
+      });
+      scroll.jumpTo(offset);
+      tester.binding.scheduleFrame();
+      await tester.pump();
+      final lineCenter = headingParagraph.localToGlobal(lastLine.center).dy;
+      final selected = painted!.where(
+        (rect) => (rect.center.dy - lineCenter).abs() < 1,
+      );
+      expect(selected, hasLength(1), reason: 'scroll offset $offset');
+      expect(selected.single.width, closeTo(expectedWidth, .01));
+      await tester.pumpAndSettle();
+    }
+    expect(initial, isNotEmpty);
   });
 }

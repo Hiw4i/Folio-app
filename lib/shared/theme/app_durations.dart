@@ -24,6 +24,10 @@ class AppDurations {
   static const Duration morph = normal;
   static const Duration separation = normal;
 
+  /// Hint threshold for opening a morphing control by press-and-hold. Faster
+  /// than the platform kLongPressTimeout (500 ms) so the menu feels immediate.
+  static const Duration longPressOpen = slow;
+
   static const Duration bannerHide = Duration(seconds: 3);
   static const Duration tooltipDelay = Duration(milliseconds: 500);
   static const Duration tooltipHide = fast;

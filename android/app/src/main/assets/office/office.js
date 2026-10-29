@@ -87,19 +87,21 @@
   function refreshGeometry() {
     state.pages = Array.from(documentRoot.querySelectorAll(format === 'docx'
       ? '.docx-wrapper > section.docx' : '.folio-slide-frame'));
+    if (format !== 'docx') return;
     const rect = viewport.getBoundingClientRect();
     // One read batch after layout. The scroll path never measures every page.
     state.centers = state.pages.map((page) => {
       const r = page.getBoundingClientRect();
-      return format === 'pptx' ? r.left - rect.left + viewport.scrollLeft + r.width / 2
-        : r.top - rect.top + viewport.scrollTop + r.height / 2;
+      return r.top - rect.top + viewport.scrollTop + r.height / 2;
     });
   }
 
+  // Word derives its position from the scroll offset. PowerPoint never
+  // scrolls: exactly one slide frame is displayed and the position is
+  // explicit state, swapped by showSlide().
   function publishPosition(force = false) {
-    if (!state.pages.length || state.disposed) return;
-    const center = format === 'pptx' ? viewport.scrollLeft + viewport.clientWidth / 2
-      : viewport.scrollTop + viewport.clientHeight / 2;
+    if (format !== 'docx' || !state.pages.length || state.disposed) return;
+    const center = viewport.scrollTop + viewport.clientHeight / 2;
     let lo = 0, hi = state.centers.length;
     while (lo < hi) {
       const mid = (lo + hi) >>> 1;
@@ -114,56 +116,39 @@
     }
   }
 
+  // PowerPoint navigation without any scrolling: the target slide frame is
+  // displayed, the previous one is hidden. The swap is instant by nature —
+  // no scroll offset, no animation, nothing to snap, fling or clamp.
+  function showSlide(index) {
+    const pages = state.pages;
+    if (!pages.length || state.disposed) return;
+    const next = Math.max(0, Math.min(Math.trunc(Number(index) || 0), pages.length - 1));
+    const target = pages[next];
+    const previous = pages[state.position];
+    if (previous && previous !== target) previous.classList.remove('is-active');
+    target.classList.add('is-active');
+    state.position = next;
+    state.count = pages.length;
+    post('position', { current: next + 1, count: pages.length });
+  }
+
   function zoomed() {
     return (window.visualViewport?.scale || 1) > 1.01;
   }
 
-  // Pure range math for the zoomed-slide clamp below; covered by browser tests.
-  function zoomedSlideRange(position, clientWidth, scale) {
-    const lo = position * clientWidth;
-    return { lo, hi: lo + clientWidth * (1 - 1 / scale) };
-  }
-
-  // Zoomed PPTX never leaves the current slide: no finger flips and no
-  // snap/fling animations to neighbours. Pinch-zoom itself is native and
-  // untouched; while the scale is changing (active pinch) scroll is left
-  // alone so the clamp never fights the browser's pinch anchor.
-  function clampZoomedSlide() {
-    if (format !== 'pptx' || state.disposed || !zoomed()) {
-      clampZoomedSlide.lastScale = window.visualViewport?.scale || 1;
-      return;
-    }
-    const scale = window.visualViewport.scale || 1;
-    if (Math.abs(scale - clampZoomedSlide.lastScale) > 0.001) {
-      clampZoomedSlide.lastScale = scale;
-      return;
-    }
-    const w = viewport.clientWidth;
-    if (!(w > 0)) return;
-    const { lo, hi } = zoomedSlideRange(state.position, w, scale);
-    const bounded = Math.min(hi, Math.max(lo, viewport.scrollLeft));
-    if (Math.abs(bounded - viewport.scrollLeft) > 0.5) {
-      viewport.scrollTo({ left: bounded, behavior: 'instant' });
-    }
-  }
-  clampZoomedSlide.lastScale = 1;
-
   function onScroll() {
-    if (state.scrollFrame || state.disposed) return;
+    // PowerPoint has no scrollable viewport at all; this is Word's pager.
+    if (format !== 'docx' || state.scrollFrame || state.disposed) return;
     state.scrollFrame = requestAnimationFrame(() => {
       state.scrollFrame = 0;
-      const current = format === 'pptx' ? viewport.scrollLeft : viewport.scrollTop;
+      const current = viewport.scrollTop;
       const delta = current - state.lastScroll;
       state.lastScroll = current;
       if (state.pointer && Math.abs(current - state.pointer.scroll) > 1) {
         state.pointer.moved = true;
       }
-      // Horizontal slide navigation never expresses intent to hide chrome.
-      // Keep position updates, but avoid a bridge message on every swipe frame.
-      if (format === 'docx' && !selection.isActive() && !motion.isAnimating
+      if (!selection.isActive() && !motion.isAnimating
           && Math.abs(delta) > 0.5) post('scroll', { delta });
-      // Clamp before publishing so a zoomed pan can never report a neighbour.
-      clampZoomedSlide();
       publishPosition(false);
     });
   }
@@ -191,8 +176,8 @@
     // orientation query in office.css), so slides fit the full viewport edge
     // to edge. Portrait keeps the top/bottom chrome reservation but also
     // goes edge to edge horizontally. All math is viewport-based, never
-    // per-frame: off-screen frames skipped by `content-visibility: auto`
-    // would otherwise report estimated sizes and mis-scale their slides.
+    // per-frame: hidden frames have no layout, so their slides are scaled
+    // from inline sizes only (numericStyle reads element.style first).
     const landscape = viewport.clientWidth > viewport.clientHeight;
     const padTop = landscape ? 0 : 74;
     const padBottom = landscape ? 0 : 108;
@@ -237,7 +222,8 @@
     state.count = count;
     window.FolioOfficeReady = true;
     status.hidden = true;
-    publishPosition(true);
+    if (format === 'pptx') showSlide(0);
+    else publishPosition(true);
     post('ready', {
       count,
       hasText: searchableTextNodes().length > 0,
@@ -364,15 +350,14 @@
     });
     const hit = state.hits[state.activeHit];
     if (!hit) return;
-    // PowerPoint: переход между слайдами всегда мгновенный, без анимации.
-    const instant = format === 'pptx' || !smooth;
     if (format === 'pptx') {
-      const frame = hit.closest('.folio-slide-frame');
-      frame?.scrollIntoView({ behavior: 'instant', inline: 'center' });
-    } else {
-      hit.scrollIntoView({ behavior: instant ? 'instant' : 'smooth', block: 'center' });
+      // Показать слайд с попаданием — мгновенный обмен кадров, без прокрутки.
+      const index = state.pages.indexOf(hit.closest('.folio-slide-frame'));
+      if (index >= 0) showSlide(index);
+      return;
     }
-    window.setTimeout(() => publishPosition(true), instant ? 0 : 260);
+    hit.scrollIntoView({ behavior: smooth ? 'smooth' : 'instant', block: 'center' });
+    window.setTimeout(() => publishPosition(true), smooth ? 260 : 0);
   }
 
   function stepHit(delta) {
@@ -388,15 +373,18 @@
 
   function goToPosition(index, smooth = true) {
     motion.reset();
+    // PowerPoint: смена слайда — мгновенная замена кадра, без прокрутки.
+    if (format === 'pptx') {
+      showSlide(index);
+      return;
+    }
     const pages = pageElements();
     const target = pages[Math.max(0, Math.min(Math.trunc(Number(index) || 0), pages.length - 1))];
     if (!target) return;
-    // PowerPoint: смена слайдов всегда мгновенная, без анимации перелистывания.
-    const instant = format === 'pptx' || !smooth;
     target.scrollIntoView({
-      behavior: instant ? 'instant' : 'smooth',
-      block: format === 'docx' ? 'start' : 'nearest',
-      inline: format === 'pptx' ? 'center' : 'nearest',
+      behavior: smooth ? 'smooth' : 'instant',
+      block: 'start',
+      inline: 'nearest',
     });
   }
 
@@ -405,8 +393,6 @@
     nextHit: () => stepHit(1),
     previousHit: () => stepHit(-1),
     goToPosition,
-    // Чистая математика клампа увеличенного слайда (покрыта брауз. тестами).
-    zoomedSlideRange,
   };
 
   document.addEventListener('click', (event) => {
@@ -450,7 +436,7 @@
       scale: window.visualViewport?.scale || 1,
       interactive: isInteractive(event.target),
       selectionActive: window.getSelection()?.isCollapsed === false,
-      scroll: format === 'pptx' ? viewport.scrollLeft : viewport.scrollTop,
+      scroll: viewport.scrollTop,
     };
   }, { passive: true });
   // Listen on window so a release/cancellation outside the viewport also
@@ -484,21 +470,30 @@
     if (x < 0 || x >= bounds.width || y < 0 || y >= bounds.height) return;
     const dx = event.clientX - pointer.x, dy = event.clientY - pointer.y;
     if (format === 'pptx') {
-      // Свайп делает то же самое, что тап по краю, и тем же способом:
-      // никакой свободной прокрутки, влево — вперёд, вправо — назад.
-      // На увеличенном слайде палец панорамирует содержимое нативно,
-      // поэтому жесты навигации там не срабатывают.
-      if (!zoomed() && Math.abs(dx) > swipeSlop && Math.abs(dx) >= Math.abs(dy)) {
-        if (dx < 0) goToPosition(state.position + 1);
-        else goToPosition(state.position - 1);
-        return;
+      // На увеличенном слайде навигация полностью заблокирована: палец
+      // панорамирует содержимое нативно, и ни свайп, ни тап по краю не
+      // меняют слайд. Доступен только неподвижный тап (хром читалки).
+      if (!zoomed()) {
+        // Свайп делает то же самое, что тап по краю, и тем же способом:
+        // влево — вперёд, вправо — назад; слайд просто заменяется другим.
+        if (Math.abs(dx) > swipeSlop && Math.abs(dx) >= Math.abs(dy)) {
+          goToPosition(state.position + (dx < 0 ? 1 : -1));
+          return;
+        }
+        if (pointer.moved
+            || event.timeStamp - pointer.startedAt > tapTimeout
+            || Math.hypot(dx, dy) > tapSlop) return;
+        if (x < viewport.clientWidth * 0.24) {
+          goToPosition(state.position - 1);
+        } else if (x > viewport.clientWidth * 0.76) {
+          goToPosition(state.position + 1);
+        } else post('tap');
+      } else {
+        if (pointer.moved
+            || event.timeStamp - pointer.startedAt > tapTimeout
+            || Math.hypot(dx, dy) > tapSlop) return;
+        post('tap');
       }
-      if (pointer.moved
-          || event.timeStamp - pointer.startedAt > tapTimeout
-          || Math.hypot(dx, dy) > tapSlop) return;
-      if (x < viewport.clientWidth * 0.24) goToPosition(state.position - 1);
-      else if (x > viewport.clientWidth * 0.76) goToPosition(state.position + 1);
-      else post('tap');
     } else {
       if (pointer.moved
           || event.timeStamp - pointer.startedAt > tapTimeout
@@ -513,25 +508,27 @@
     if (state.pointer) state.pointer.moved = true;
     state.resizeFrame = requestAnimationFrame(() => {
       state.resizeFrame = 0;
+      if (format === 'pptx') {
+        // Slide resize preserves the slide index, not stale pixels: re-fit
+        // the visible slide and re-assert the same position.
+        layoutSlides();
+        showSlide(position);
+        return;
+      }
       // Preserve the page-relative reading offset while Word's fit scale
-      // changes. Slide resize preserves the slide index, not stale pixels.
-      const page = format === 'docx' ? state.pages[position] : null;
+      // changes.
+      const page = state.pages[position];
       const before = page?.getBoundingClientRect();
       const viewportTop = viewport.getBoundingClientRect().top;
       const fraction = before?.height > 0 ? (viewportTop - before.top) / before.height : 0;
-      layoutSlides();
-      if (format === 'docx') {
-        window.FolioDocx.fit(documentRoot, viewport);
-        if (page && before?.height > 0) {
-          const after = page.getBoundingClientRect();
-          viewport.scrollTo({ top: viewport.scrollTop + after.top - viewportTop
-            + fraction * after.height, behavior: 'instant' });
-        }
-      } else {
-        goToPosition(position, false);
+      window.FolioDocx.fit(documentRoot, viewport);
+      if (page && before?.height > 0) {
+        const after = page.getBoundingClientRect();
+        viewport.scrollTo({ top: viewport.scrollTop + after.top - viewportTop
+          + fraction * after.height, behavior: 'instant' });
       }
       // A layout correction is not a user's reading gesture.
-      state.lastScroll = format === 'pptx' ? viewport.scrollLeft : viewport.scrollTop;
+      state.lastScroll = viewport.scrollTop;
       refreshGeometry(); publishPosition(true);
     });
   });

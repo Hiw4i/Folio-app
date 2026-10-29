@@ -71,6 +71,25 @@ void main() {
     },
   );
 
+  test('Markdown search skips == highlight delimiters', () async {
+    const path = '/mark-reader.md';
+    final source = MemoryDocumentContentSource(<String, Uint8List>{
+      path: Uint8List.fromList(utf8.encode('Plain ==highlighted== tail.')),
+    });
+    final renderer = TextDocumentRenderer(
+      document: entry(path, DocumentFormat.markdown),
+      loader: TextDocumentLoader(source),
+    );
+    addTearDown(renderer.dispose);
+
+    await renderer.open();
+    await renderer.search('highlighted');
+    expect(renderer.hitCount, 1);
+
+    await renderer.search('==highlighted');
+    expect(renderer.hitCount, 0);
+  });
+
   test('text renderer indexes matches by rendered chunk', () async {
     const path = '/chunked-reader.txt';
     final source = MemoryDocumentContentSource(<String, Uint8List>{

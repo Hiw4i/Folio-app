@@ -1,7 +1,9 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../settings/folio_settings_scope.dart';
+import '../../theme/app_durations.dart';
 
 import '../core/glass_geometry.dart';
 import '../core/liquid_shape.dart';
@@ -340,15 +342,34 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                     if (morph < 0.72)
                       Positioned.fromRect(
                         rect: geometry.collapsedRect.inflate(widget.hitSlop),
-                        child: GestureDetector(
+                        // GestureDetector hardcodes kLongPressTimeout (500 ms);
+                        // the morphing hint must feel faster than that.
+                        child: RawGestureDetector(
                           key: widget.collapsedHitKey,
                           behavior: HitTestBehavior.opaque,
-                          onTap: () {
-                            if (!_motion.wantsOpen) {
-                              (widget.onCollapsedTap ?? open)();
-                            }
+                          gestures: <Type, GestureRecognizerFactory>{
+                            TapGestureRecognizer:
+                                GestureRecognizerFactoryWithHandlers<
+                                  TapGestureRecognizer
+                                >(TapGestureRecognizer.new, (recognizer) {
+                                  recognizer.onTap = () {
+                                    if (!_motion.wantsOpen) {
+                                      (widget.onCollapsedTap ?? open)();
+                                    }
+                                  };
+                                }),
+                            LongPressGestureRecognizer:
+                                GestureRecognizerFactoryWithHandlers<
+                                  LongPressGestureRecognizer
+                                >(
+                                  () => LongPressGestureRecognizer(
+                                    duration: AppDurations.longPressOpen,
+                                  ),
+                                  (recognizer) {
+                                    recognizer.onLongPress = open;
+                                  },
+                                ),
                           },
-                          onLongPress: open,
                           child: Semantics(
                             button: true,
                             label: widget.collapsedSemanticsLabel,

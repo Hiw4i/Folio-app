@@ -8,8 +8,10 @@ import '../../../../shared/widgets/folio_status_view.dart';
 import '../../../../shared/widgets/scroll_edge_fade.dart';
 import '../data/text_document.dart';
 import '../../logic/reader_state.dart';
+import '../logic/markdown_selection_text.dart' show HighlightSyntax;
 import '../logic/text_document_renderer.dart';
 import 'text_document_selection.dart';
+import 'text_selection_source.dart';
 
 const String _passiveStart = '\u{F0000}';
 const String _passiveEnd = '\u{F0001}';
@@ -32,6 +34,9 @@ final List<markdown.InlineSyntax> _searchHitSyntaxes = <markdown.InlineSyntax>[
 final MarkdownElementBuilder _passiveSearchHitBuilder = _SearchHitBuilder(
   active: false,
 );
+final MarkdownElementBuilder _markBuilder = _MarkBuilder();
+final List<markdown.InlineSyntax> _markdownInlineSyntaxes =
+    <markdown.InlineSyntax>[..._searchHitSyntaxes, HighlightSyntax()];
 final MarkdownStyleSheet _markdownStyleSheet = _createMarkdownStyleSheet();
 
 class TextDocumentView extends StatelessWidget {
@@ -59,6 +64,7 @@ class TextDocumentView extends StatelessWidget {
     final activeChunk = renderer.activeHit?.chunkIndex;
     return TextDocumentSelection(
       document: content,
+      scrollController: scrollController,
       onSelectionChanged: onSelectionChanged,
       child: ScrollEdgeFade(
         color: appColors.background,
@@ -91,23 +97,27 @@ class TextDocumentView extends StatelessWidget {
                   constraints: const BoxConstraints(maxWidth: 720),
                   child: Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: content.isMarkdown
-                        ? _MarkdownChunk(
-                            chunk: chunk,
-                            hits: hits,
-                            activeHit: renderer.activeHit,
-                            activeHitKey: index == activeChunk
-                                ? activeHitKey
-                                : null,
-                          )
-                        : _PlainTextChunk(
-                            chunk: chunk,
-                            hits: hits,
-                            activeHit: renderer.activeHit,
-                            activeHitKey: index == activeChunk
-                                ? activeHitKey
-                                : null,
-                          ),
+                    child: TextSelectionSourceChunk(
+                      chunk: chunk,
+                      isMarkdown: content.isMarkdown,
+                      child: content.isMarkdown
+                          ? _MarkdownChunk(
+                              chunk: chunk,
+                              hits: hits,
+                              activeHit: renderer.activeHit,
+                              activeHitKey: index == activeChunk
+                                  ? activeHitKey
+                                  : null,
+                            )
+                          : _PlainTextChunk(
+                              chunk: chunk,
+                              hits: hits,
+                              activeHit: renderer.activeHit,
+                              activeHitKey: index == activeChunk
+                                  ? activeHitKey
+                                  : null,
+                            ),
+                    ),
                   ),
                 ),
               ),
@@ -222,13 +232,14 @@ class _MarkdownChunk extends StatelessWidget {
       softLineBreak: true,
       onTapLink: (text, href, title) {},
       imageBuilder: (uri, title, alt) => _BlockedImage(label: alt),
-      inlineSyntaxes: _searchHitSyntaxes,
+      inlineSyntaxes: _markdownInlineSyntaxes,
       builders: <String, MarkdownElementBuilder>{
         'folio-search-hit': _passiveSearchHitBuilder,
         'folio-search-hit-active': _SearchHitBuilder(
           active: true,
           targetKey: activeHitKey,
         ),
+        'mark': _markBuilder,
       },
       styleSheet: _markdownStyleSheet,
     );
@@ -274,6 +285,23 @@ class _SearchHitSyntax extends markdown.InlineSyntax {
   bool onMatch(markdown.InlineParser parser, Match match) {
     parser.addNode(markdown.Element.text(tag, match.group(1)!));
     return true;
+  }
+}
+
+class _MarkBuilder extends MarkdownElementBuilder {
+  @override
+  Widget? visitElementAfterWithContext(
+    BuildContext context,
+    markdown.Element element,
+    TextStyle? preferredStyle,
+    TextStyle? parentStyle,
+  ) {
+    return Text(
+      element.textContent,
+      style: (parentStyle ?? preferredStyle)?.copyWith(
+        backgroundColor: const Color(0x59D8B44A),
+      ),
+    );
   }
 }
 

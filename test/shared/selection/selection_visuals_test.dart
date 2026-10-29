@@ -5,6 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/shared/selection/selection_visuals.dart';
 
 void main() {
+  test('a selection below the viewport anchors at the bottom, not the top', () {
+    final anchors = folioVisibleSelectionAnchors(
+      original: null,
+      viewport: const Rect.fromLTWH(0, 0, 400, 800),
+      visibleRects: const [Rect.fromLTWH(40, 950, 200, 24)],
+    );
+    expect(anchors.primaryAnchor.dy, greaterThanOrEqualTo(800));
+  });
+
   test('selection contour rounds exposed line ends', () {
     final path = folioSelectionPath(const <Rect>[
       Rect.fromLTWH(10, 10, 100, 20),
@@ -116,14 +125,17 @@ void main() {
     expect(path.contains(const Offset(270, 394)), isFalse);
   });
 
-  test('same-line fragments merge up to half the row height and not beyond', () {
-    Path select(double gap) => folioSelectionPath(<Rect>[
-      Rect.fromLTWH(10, 10, 40, 20),
-      Rect.fromLTWH(50 + gap, 10, 40, 20),
-    ]);
-    expect(select(10).computeMetrics().length, 1);
-    expect(select(11).computeMetrics().length, 2);
-  });
+  test(
+    'same-line fragments merge up to half the row height and not beyond',
+    () {
+      Path select(double gap) => folioSelectionPath(<Rect>[
+        Rect.fromLTWH(10, 10, 40, 20),
+        Rect.fromLTWH(50 + gap, 10, 40, 20),
+      ]);
+      expect(select(10).computeMetrics().length, 1);
+      expect(select(11).computeMetrics().length, 2);
+    },
+  );
 
   test('input order does not change the silhouette', () {
     final boxes = <Rect>[
