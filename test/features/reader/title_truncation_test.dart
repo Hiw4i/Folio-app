@@ -14,14 +14,8 @@ void main() {
 
   test('a fitting name is returned untouched', () {
     final name = 'report.pdf';
-    final width = truncator.truncate(
-      name,
-      _style,
-      10000,
-      direction,
-      scaler,
-    );
-    expect(width, name);
+    final result = truncator.truncate(name, _style, 10000, direction, scaler);
+    expect(result, name);
   });
 
   test('a non-fitting name keeps its extension readable', () {

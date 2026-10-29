@@ -8,9 +8,7 @@ import 'folio_settings.dart';
 import 'folio_settings_store.dart';
 
 class FolioSettingsController extends ChangeNotifier {
-  FolioSettingsController({required FolioSettingsStore store})
-    // ignore: prefer_initializing_formals
-    : _store = store;
+  FolioSettingsController({required this._store});
 
   final FolioSettingsStore _store;
 

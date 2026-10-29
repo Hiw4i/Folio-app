@@ -2,7 +2,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/features/reader/logic/chrome_visibility.dart';
 
 void main() {
-  final accumulator = ChromeScrollIntentAccumulator(threshold: 12);
+  late ChromeScrollIntentAccumulator accumulator;
+
+  setUp(() {
+    accumulator = ChromeScrollIntentAccumulator(threshold: 12);
+  });
 
   test('intent accumulates until the hide threshold crosses', () {
     expect(

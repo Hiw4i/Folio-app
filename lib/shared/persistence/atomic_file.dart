@@ -2,9 +2,9 @@ import 'dart:io';
 
 /// A caller-derivable staging path for [destinationPath]. Unique per call —
 /// the serial disambiguates calls within one clock tick (Windows wall-clock
-/// granularity is ~15 ms) — so concurrent writers, even to the same
-/// destination, never race one temp file. Exported so tests can reason about
-/// leftover staging files.
+/// granularity is ~15 ms) — so concurrent writers within an isolate, even to
+/// the same destination, never race one temp file. Exported so tests can
+/// reason about leftover staging files.
 int _stagingSerial = 0;
 
 String temporaryPathFor(String destinationPath) {
@@ -14,12 +14,13 @@ String temporaryPathFor(String destinationPath) {
 
 /// Replaces a derived local file only after the replacement has been flushed.
 ///
-/// The last good file is never destroyed as a fallback for a failed write:
-/// instead of deleting the destination when the platform cannot rename over
-/// it (Windows), the old file is renamed aside to a backup and moved back if
-/// the swap fails. A crash at any point therefore leaves either the new file
-/// or the old file on disk — never nothing. Callers serialize writes to a
-/// given destination.
+/// The swap is a single atomic rename wherever the platform supports
+/// renaming over an existing file (POSIX — Android included). Windows cannot
+/// rename over an existing file, so there the last good file is renamed
+/// aside to a backup and moved back if the swap still fails. A crash at any
+/// point therefore leaves either the new file or the old file on disk —
+/// the old file possibly under the `.bak` name, where [restoreFromBackup]
+/// recovers it. Callers serialize writes to a given destination.
 Future<void> writeFileAtomically(
   File destination,
   String contents, {
@@ -31,30 +32,33 @@ Future<void> writeFileAtomically(
   var replaced = false;
   try {
     await temporary.writeAsString(contents, flush: true);
-    if (await destination.exists()) {
-      try {
-        await _bestEffortDelete(backup);
-        await _renameWithRetry(destination, backup.path);
-      } on FileSystemException {
-        // The backup itself could not be made: the destination is untouched,
-        // so failing here is safe.
-        rethrow;
-      }
-    }
     try {
-      await _renameWithRetry(temporary, destination.path);
+      await temporary.rename(destination.path);
       replaced = true;
     } on FileSystemException {
-      // The swap failed after the backup was made. The destination must not
-      // stay absent — move the last good file back before surfacing the
-      // error, then rethrow so the caller still knows the write failed.
-      if (await backup.exists()) {
-        if (await destination.exists()) {
-          await destination.delete();
-        }
-        await _renameWithRetry(backup, destination.path);
+      // The platform cannot rename over the existing file (Windows). Move
+      // the last good file aside, swap again, and move it back if the swap
+      // still fails — the destination must never be destroyed by a failed
+      // write.
+      if (await _pathType(destination) != FileSystemEntityType.notFound) {
+        await _bestEffortDelete(backup);
+        await _renameWithRetry(destination, backup.path);
       }
-      rethrow;
+      try {
+        await _renameWithRetry(temporary, destination.path);
+        replaced = true;
+      } on FileSystemException {
+        // The swap failed after the backup was made. Move the last good
+        // file back before surfacing the error, then rethrow so the caller
+        // still knows the write failed.
+        if (await _pathType(backup) != FileSystemEntityType.notFound) {
+          if (await _pathType(destination) != FileSystemEntityType.notFound) {
+            await destination.delete();
+          }
+          await _renameWithRetry(backup, destination.path);
+        }
+        rethrow;
+      }
     }
   } finally {
     await _bestEffortDelete(temporary);
@@ -63,7 +67,43 @@ Future<void> writeFileAtomically(
     }
     // If !replaced and the backup still exists, the restore above failed.
     // Keeping the backup is deliberate: it is the only surviving copy, and
-    // the next successful write reclaims the name.
+    // [restoreFromBackup] recovers it on the next read.
+  }
+}
+
+/// Restores the backup of [destination] after a crash left the destination
+/// absent — the window between the backup rename and the swap, or a failed
+/// restore. Readers call this before treating a missing file as empty.
+/// Returns true when the destination exists afterwards.
+Future<bool> restoreFromBackup(File destination) async {
+  if (await _pathType(destination) != FileSystemEntityType.notFound) {
+    return true;
+  }
+  final backup = File('${destination.path}.bak');
+  if (await _pathType(backup) != FileSystemEntityType.file) {
+    return false;
+  }
+  try {
+    await _renameWithRetry(backup, destination.path);
+    return true;
+  } on FileSystemException {
+    return false;
+  }
+}
+
+/// The path's entity type without following links: `File.exists` reports
+/// false for directories, and a link must never be treated as its target.
+Future<FileSystemEntityType> _pathType(FileSystemEntity entity) =>
+    FileSystemEntity.type(entity.path, followLinks: false);
+
+Future<void> _bestEffortDelete(File file) async {
+  try {
+    if (await _pathType(file) == FileSystemEntityType.file) {
+      await file.delete();
+    }
+  } on FileSystemException {
+    // Cleanup must not mask the original write/rename failure. Leftovers are
+    // reclaimed by the next write.
   }
 }
 
@@ -93,16 +133,5 @@ Future<void> _renameWithRetry(File source, String target) async {
       await Future<void>.delayed(_renameRetryDelays[attempt]);
       attempt += 1;
     }
-  }
-}
-
-Future<void> _bestEffortDelete(File file) async {
-  try {
-    if (await file.exists()) {
-      await file.delete();
-    }
-  } on FileSystemException {
-    // Cleanup must not mask the original write/rename failure. Leftovers are
-    // reclaimed by the next write.
   }
 }

@@ -2,7 +2,8 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:folio/shared/persistence/atomic_file.dart';
+import 'package:folio/shared/persistence/atomic_file.dart'
+    show restoreFromBackup, temporaryPathFor, writeFileAtomically;
 import 'package:folio/shared/settings/folio_settings.dart';
 import 'package:folio/shared/settings/folio_settings_controller.dart';
 import 'package:folio/shared/settings/folio_settings_store.dart';
@@ -328,23 +329,45 @@ void main() {
     expect(await file.readAsString(), 'last-good');
   });
 
-  test('failed backup swap preserves the previous destination', () async {
+  test('obstructed backup name never destroys the previous file', () async {
     final directory = await Directory.systemTemp.createTemp(
       'folio-atomic-backup-',
     );
     addTearDown(() => directory.delete(recursive: true));
     final file = File('${directory.path}/cache.json');
     await file.writeAsString('last-good');
-    // A directory at the backup path makes the "move the last good file
-    // aside" step fail before the destination is ever touched: the write
-    // must fail without destroying the previous file (the old delete-then-
-    // rename implementation lost it exactly here).
+    // A directory at the backup path obstructs the "move the last good file
+    // aside" step. Platforms with atomic rename-over simply replace the
+    // file; platforms that must move it aside fail the write. Either way
+    // the previous content must never be lost (the old delete-then-rename
+    // implementation destroyed it exactly here).
     await Directory('${file.path}.bak').create();
-    await expectLater(
-      writeFileAtomically(file, 'replacement'),
-      throwsA(isA<FileSystemException>()),
+    try {
+      await writeFileAtomically(file, 'replacement');
+      expect(await file.readAsString(), 'replacement');
+    } on FileSystemException {
+      expect(await file.readAsString(), 'last-good');
+    }
+  });
+
+  test('restoreFromBackup recovers the file a crash left as a backup',
+      () async {
+    final directory = await Directory.systemTemp.createTemp(
+      'folio-atomic-restore-',
     );
+    addTearDown(() => directory.delete(recursive: true));
+    final file = File('${directory.path}/cache.json');
+    await writeFileAtomically(file, 'last-good');
+    // Simulate a crash between the backup rename and the swap: the
+    // destination is absent and the last good content sits in the backup.
+    await file.rename('${file.path}.bak');
+    expect(await restoreFromBackup(file), isTrue);
     expect(await file.readAsString(), 'last-good');
+    expect(await File('${file.path}.bak').exists(), isFalse);
+    // Nothing to restore: report false without creating anything.
+    final absent = File('${directory.path}/absent.json');
+    expect(await restoreFromBackup(absent), isFalse);
+    expect(await absent.exists(), isFalse);
   });
 }
 

@@ -6,7 +6,8 @@ import 'dart:isolate';
 import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../../shared/persistence/atomic_file.dart';
+import '../../../shared/persistence/atomic_file.dart'
+    show restoreFromBackup, writeFileAtomically;
 import '../../../shared/persistence/coalescing_drainer.dart';
 
 import '../../../shared/diagnostics/app_log.dart';
@@ -294,8 +295,13 @@ class FileLibraryRepository implements LibraryRepository {
   Future<List<DocumentEntry>> _readCache() async {
     try {
       final file = await _cacheFile();
-      if (!await file.exists()) {
-        return const <DocumentEntry>[];
+      if (await FileSystemEntity.type(file.path, followLinks: false) ==
+          FileSystemEntityType.notFound) {
+        // A crash between the backup rename and the swap can leave the
+        // catalog absent with its backup intact: recover it first.
+        if (!await restoreFromBackup(file)) {
+          return const <DocumentEntry>[];
+        }
       }
       final contents = await file.readAsString();
       final decoded = await Isolate.run<Object?>(() => jsonDecode(contents));

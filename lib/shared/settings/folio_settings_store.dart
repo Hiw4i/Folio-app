@@ -28,17 +28,23 @@ class FileFolioSettingsStore implements FolioSettingsStore {
   @override
   Future<FolioSettings> load() async {
     final file = await _file();
-    final entityType = await FileSystemEntity.type(file.path);
+    final entityType = await FileSystemEntity.type(
+      file.path,
+      followLinks: false,
+    );
     if (entityType == FileSystemEntityType.notFound) {
-      return const FolioSettings();
-    }
-    if (entityType != FileSystemEntityType.file) {
-      // A directory or link squatting the settings path is not recoverable
+      // A crash between the backup rename and the swap can leave the file
+      // absent with its backup intact: recover it before giving up.
+      if (!await restoreFromBackup(file)) {
+        return const FolioSettings();
+      }
+    } else if (entityType != FileSystemEntityType.file) {
+      // A link or directory squatting the settings path is not recoverable
       // data. File.exists reports false for it, so without this check the
       // path would silently block every future save; clear it and start
-      // from defaults.
+      // from defaults. Only the link itself is removed — never its target.
       AppLog.w('Folio settings path is occupied by a $entityType; cleared.');
-      await _quarantine(file);
+      await _quarantine(file, entityType);
       return const FolioSettings();
     }
     try {
@@ -51,18 +57,23 @@ class FileFolioSettingsStore implements FolioSettingsStore {
       // An unreadable or corrupt settings file must not poison every future
       // start: quarantine it once (best-effort) and fall back to defaults.
       AppLog.w('Folio settings quarantined', error, stack);
-      await _quarantine(file);
+      await _quarantine(file, FileSystemEntityType.file);
       return const FolioSettings();
     }
   }
 
   /// Moves the poisoned file to a `.corrupt` sibling so the contents remain
   /// inspectable; deleting is the fallback when the rename is not possible.
-  /// A directory squatting the path is removed outright (File.rename/delete
-  /// reject directories on some platforms).
-  Future<void> _quarantine(File file) async {
-    final entityType = await FileSystemEntity.type(file.path);
-    if (entityType == FileSystemEntityType.notFound) {
+  /// Links are unlinked without touching their target, and a directory
+  /// squatting the path is removed outright (File.rename/delete reject
+  /// directories on some platforms).
+  Future<void> _quarantine(File file, FileSystemEntityType entityType) async {
+    if (entityType == FileSystemEntityType.link) {
+      try {
+        await Link(file.path).delete();
+      } on FileSystemException {
+        // The path stays blocked; the next start retries the quarantine.
+      }
       return;
     }
     if (entityType == FileSystemEntityType.directory) {

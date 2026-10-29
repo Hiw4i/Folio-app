@@ -1,16 +1,41 @@
 # Folio Total Refactoring — Implementation Plan
 
-> **Execution status (2026-10-29):** Tracks 1–4 delivered in commits
-> `b1d9819`…(HEAD): AppLog + global handlers; data-loss-safe atomic writes
-> (+ delete-pending retry, path-type check); settings quarantine + scope
-> warning; AppCurves/AppMotion tokens; CoalescingDrainer (both layers);
-> BoundedTextMeasurer; TitleTruncator; ChromeScrollIntentAccumulator;
-> reader_screen decomposition; edge-scroller shim removal; honest library
-> failures + resume cooldown. 466 tests green, analyze clean.
-> **Deferred deliberately (highest-risk semantic merges, need their own
-> session):** Task 2.5 glass-controller dedup (drifted settle semantics must
-> be reconciled carefully), Task 3.5 renderer seek-coalescer extraction,
-> Task 3.7 scrubber contract interface, markdown RegExp hoisting.
+> **Execution status (2026-10-29, after independent review):**
+>
+> **Delivered:**
+> - Task 1.1 (atomic_file: backup-rename protocol, unique staging path,
+>   rename retry; review pass added rename-over-first so POSIX/Android keeps
+>   a single atomic swap, plus `restoreFromBackup` wired into both readers —
+>   SDK 3.13 rename-over works on Windows too, so the backup dance is now a
+>   fallback only).
+> - Task 1.2 core (AppLog, global handlers in main, AppLog at all
+>   LibraryController/FileLibraryRepository/settings catch sites).
+> - Task 1.3 (path-type check, quarantine, scope debug warning).
+> - Task 2.1 (AppCurves/AppMotion, all listed sites), 2.2 (CoalescingDrainer),
+>   2.3 (BoundedTextMeasurer), 2.4 partial (`_limitOffset` dedup NOT done —
+>   see deferred).
+> - Task 3.1, 3.2, 3.3 (reader_screen decomposition), 3.4 (shim removal).
+> - Task 4.3 partial (controller AppLog; dead-code claim for `open()` was
+>   WRONG — tests call it, method restored), Task 4.4 partial (resume
+>   cooldown, separator token, dead re-export removed).
+>
+> **NOT delivered (deferred deliberately — see list below):** Task 1.2's
+> `document_scanner.dart:220` stack-trace fix; Task 2.4's glass token
+> consolidation and Task 2.5 entirely; Task 3.5, 3.6 (renderer `catch (_)`
+> sites still silent, markdown RegExp hoisting, probe limit, pointer-router
+> gate), 3.7; Task 4.1 (typed scanner isolate messages), 4.2 (merge-block
+> dedup, path validation), 4.3's `recoverUnavailable` flag and
+> `requestFullAccess` UI-mapping fix, 4.4's `MediaQuery.of` narrowing,
+> `FolioSheetDivider` reuse and `_RefreshFailureNotice` fold, 4.5.
+>
+> 466 tests green, analyze clean. Verification: independent review pass
+> (mechanical old-vs-new comparison + full suite run) with its Important
+> findings fixed in the same session.
+
+**Deferred deliberately (highest-risk semantic merges, need their own
+session):** Task 2.5 glass-controller dedup (drifted settle semantics must
+be reconciled carefully), Task 3.5 renderer seek-coalescer extraction,
+Task 3.7 scrubber contract interface, markdown RegExp hoisting.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement
 > this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
