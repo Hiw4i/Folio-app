@@ -1,5 +1,17 @@
 # Folio Total Refactoring — Implementation Plan
 
+> **Execution status (2026-10-29):** Tracks 1–4 delivered in commits
+> `b1d9819`…(HEAD): AppLog + global handlers; data-loss-safe atomic writes
+> (+ delete-pending retry, path-type check); settings quarantine + scope
+> warning; AppCurves/AppMotion tokens; CoalescingDrainer (both layers);
+> BoundedTextMeasurer; TitleTruncator; ChromeScrollIntentAccumulator;
+> reader_screen decomposition; edge-scroller shim removal; honest library
+> failures + resume cooldown. 466 tests green, analyze clean.
+> **Deferred deliberately (highest-risk semantic merges, need their own
+> session):** Task 2.5 glass-controller dedup (drifted settle semantics must
+> be reconciled carefully), Task 3.5 renderer seek-coalescer extraction,
+> Task 3.7 scrubber contract interface, markdown RegExp hoisting.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement
 > this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
