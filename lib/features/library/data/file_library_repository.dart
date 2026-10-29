@@ -7,7 +7,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../../shared/persistence/atomic_file.dart';
+import '../../../shared/persistence/coalescing_drainer.dart';
 
+import '../../../shared/diagnostics/app_log.dart';
 import '../../../shared/android/android_storage_gateway.dart';
 import 'document_entry.dart';
 import 'document_scanner.dart';
@@ -34,8 +36,13 @@ class FileLibraryRepository implements LibraryRepository {
   final DateTime Function() _now;
   final Map<String, DocumentEntry> _documents = <String, DocumentEntry>{};
   Future<void>? _cacheLoading;
-  Future<void>? _writeQueue;
-  bool _writeRequested = false;
+
+  /// One writer, latest-value coalescing: catalog writes can be requested
+  /// from a scan, an intent registration and a recents update in the same
+  /// instant, and two concurrent atomic writes to one file must never race.
+  late final CoalescingDrainer _catalogWriter = CoalescingDrainer(
+    _writeCatalog,
+  );
   Object? lastCacheWriteError;
   bool _disposed = false;
   LibraryAccess _access = LibraryAccess.denied;
@@ -324,45 +331,26 @@ class FileLibraryRepository implements LibraryRepository {
   /// Background registration deliberately outlives the first reader. Tests use
   /// this hook to inspect the cache without racing that merge.
   @visibleForTesting
-  Future<void> flushCacheWrites() async {
-    while (true) {
-      final write = _writeQueue;
-      if (write == null) {
-        return;
-      }
-      await write;
-    }
-  }
+  Future<void> flushCacheWrites() => _catalogWriter.flush();
 
-  Future<void> _persist() {
-    _writeRequested = true;
-    return _writeQueue ??= _drainWrites().whenComplete(() {
-      _writeQueue = null;
-      if (_writeRequested) {
-        unawaited(_persist());
-      }
-    });
-  }
+  Future<void> _persist() => _catalogWriter.request();
 
-  Future<void> _drainWrites() async {
-    while (_writeRequested) {
-      _writeRequested = false;
-      try {
-        final payload = <String, Object?>{
-          'version': _cacheVersion,
-          'documents': _documents.values
-              .map((document) => document.toJson())
-              .toList(growable: false),
-        };
-        final encoded = await Isolate.run<String>(() => jsonEncode(payload));
-        await writeFileAtomically(await _cacheFile(), encoded);
-        lastCacheWriteError = null;
-      } catch (error) {
-        // The catalog is a cache, never the document itself. Disk errors must
-        // not abort a successful scan, intent or document-opening operation.
-        lastCacheWriteError = error;
-        debugPrint('Folio catalog cache could not be written: $error');
-      }
+  Future<void> _writeCatalog() async {
+    try {
+      final payload = <String, Object?>{
+        'version': _cacheVersion,
+        'documents': _documents.values
+            .map((document) => document.toJson())
+            .toList(growable: false),
+      };
+      final encoded = await Isolate.run<String>(() => jsonEncode(payload));
+      await writeFileAtomically(await _cacheFile(), encoded);
+      lastCacheWriteError = null;
+    } catch (error, stack) {
+      // The catalog is a cache, never the document itself. Disk errors must
+      // not abort a successful scan, intent or document-opening operation.
+      lastCacheWriteError = error;
+      AppLog.w('Folio catalog cache could not be written', error, stack);
     }
   }
 

@@ -2,20 +2,27 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../diagnostics/app_log.dart';
+import '../persistence/coalescing_drainer.dart';
 import 'folio_settings.dart';
 import 'folio_settings_store.dart';
 
 class FolioSettingsController extends ChangeNotifier {
-  FolioSettingsController({required this._store});
+  FolioSettingsController({required FolioSettingsStore store})
+    // ignore: prefer_initializing_formals
+    : _store = store;
 
   final FolioSettingsStore _store;
+
+  /// One writer, latest-value coalescing. A rapid pair of switches cannot
+  /// race two temporary files or leave an older preference on disk.
+  late final CoalescingDrainer _writer = CoalescingDrainer(_writeSnapshot);
+
   FolioSettings _settings = const FolioSettings();
   Future<void>? _loading;
-  Future<void>? _saving;
   bool _blurChanged = false;
   bool _motionChanged = false;
   bool _navigationChanged = false;
-  bool _saveRequested = false;
   bool _disposed = false;
   Object? _saveError;
 
@@ -42,9 +49,9 @@ class FolioSettingsController extends ChangeNotifier {
         _settings = next;
         _notify();
       }
-    } catch (error) {
+    } catch (error, stack) {
       // Missing/corrupt storage is not a reason to block the first app frame.
-      debugPrint('Folio settings could not be loaded: $error');
+      AppLog.w('Folio settings could not be loaded', error, stack);
     }
   }
 
@@ -78,50 +85,30 @@ class FolioSettingsController extends ChangeNotifier {
   void _changed() {
     _saveError = null;
     _notify();
-    _scheduleSave();
+    unawaited(_writer.request());
   }
 
   void retrySave() {
     if (!_disposed) {
-      _scheduleSave();
+      unawaited(_writer.request());
     }
   }
 
-  void _scheduleSave() {
-    _saveRequested = true;
-    _saving ??= _drainWrites().whenComplete(() {
-      _saving = null;
-      // A change may arrive in the microtask between draining and completion.
-      if (_saveRequested) {
-        _scheduleSave();
-      }
-    });
-  }
-
-  Future<void> _drainWrites() async {
+  Future<void> _writeSnapshot() async {
     await load();
-    // One writer, latest-value coalescing. A rapid pair of switches cannot
-    // race two temporary files or leave an older preference on disk.
-    while (_saveRequested) {
-      _saveRequested = false;
-      final snapshot = _settings;
-      try {
-        await _store.save(snapshot);
-        _saveError = null;
-      } catch (error) {
-        _saveError = error;
-        debugPrint('Folio settings could not be saved: $error');
-      }
-      _notify();
+    final snapshot = _settings;
+    try {
+      await _store.save(snapshot);
+      _saveError = null;
+    } catch (error, stack) {
+      _saveError = error;
+      AppLog.w('Folio settings could not be saved', error, stack);
     }
+    _notify();
   }
 
   /// Also useful when the app is backgrounded; pending writes outlive the UI.
-  Future<void> flush() async {
-    while (_saving != null) {
-      await _saving;
-    }
-  }
+  Future<void> flush() => _writer.flush();
 
   void _notify() {
     if (!_disposed) {
