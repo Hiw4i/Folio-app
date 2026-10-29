@@ -1,11 +1,15 @@
 import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart' show DragStartBehavior;
+import 'package:flutter/scheduler.dart' show SchedulerPhase;
 import 'package:flutter/widgets.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
 import '../glass/liquid_glass.dart';
 import '../theme/folio_theme.dart';
+import '../widgets/scale_reveal.dart';
+
+part 'folio_selection_toolbar_host.dart';
 
 /// Custom context menu builder for [SelectionArea] content (plain reader text).
 ///
@@ -53,14 +57,8 @@ class FolioSelectionToolbarController {
   }
 }
 
-/// Folio text-selection toolbar: одна общая liquid-пилюля, только иконки Lucide.
-///
-/// Reader (read-only) показывает copy/select all. Редактируемый текст
-/// (поле поиска) дополнительно показывает cut/paste — иначе в поиск
-/// невозможно вставить текст. Остальные системные действия скрыты.
-/// The horizontal anchor stays fixed for the current selection while the menu
-/// follows its vertical anchors. Drag anywhere on the pill immediately to
-/// pin it instead. Placement always stays inside the visible safe area.
+/// Format-independent menu request. The host retains its visual surface through
+/// exit; without a host this renders a standalone animated toolbar.
 class FolioSelectionToolbar extends StatefulWidget {
   const FolioSelectionToolbar({
     required this.anchors,
@@ -72,18 +70,121 @@ class FolioSelectionToolbar extends StatefulWidget {
 
   final TextSelectionToolbarAnchors anchors;
   final List<ContextMenuButtonItem> buttonItems;
+  final Object? selectionId;
+  final FolioSelectionToolbarController? controller;
+
+  @override
+  State<FolioSelectionToolbar> createState() =>
+      _FolioToolbarRegistrationState();
+}
+
+class _FolioToolbarRegistrationState extends State<FolioSelectionToolbar> {
+  _FolioToolbarHostState? _host;
+  int _generation = 0;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final host = context
+        .dependOnInheritedWidgetOfExactType<_FolioToolbarScope>()
+        ?.host;
+    if (!identical(host, _host)) {
+      _host?.release(this);
+      _host = host;
+    }
+  }
+
+  @override
+  void deactivate() {
+    _generation++;
+    _host?.release(this);
+    super.deactivate();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final host = _host;
+    if (host == null) {
+      return _FolioSelectionToolbarSurface(
+        anchors: widget.anchors,
+        buttonItems: widget.buttonItems,
+        selectionId: widget.selectionId,
+        controller: widget.controller,
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final generation = ++_generation;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || generation != _generation) return;
+          final source = context.findRenderObject();
+          final destination = host.context.findRenderObject();
+          if (source is! RenderBox ||
+              destination is! RenderBox ||
+              !source.attached ||
+              !destination.attached) {
+            return;
+          }
+          final origin = destination.globalToLocal(
+            source.localToGlobal(Offset.zero),
+          );
+          final anchors = widget.anchors;
+          host.present(
+            this,
+            FolioSelectionToolbar(
+              anchors: TextSelectionToolbarAnchors(
+                primaryAnchor: anchors.primaryAnchor + origin,
+                secondaryAnchor: anchors.secondaryAnchor == null
+                    ? null
+                    : anchors.secondaryAnchor! + origin,
+              ),
+              buttonItems: widget.buttonItems,
+              selectionId: widget.selectionId,
+              controller: widget.controller,
+            ),
+          );
+        });
+        return const SizedBox.expand();
+      },
+    );
+  }
+}
+
+/// Folio text-selection toolbar: одна общая liquid-пилюля, только иконки Lucide.
+///
+/// Reader (read-only) показывает copy/select all. Редактируемый текст
+/// (поле поиска) дополнительно показывает cut/paste — иначе в поиск
+/// невозможно вставить текст. Остальные системные действия скрыты.
+/// The horizontal anchor stays fixed for the current selection while the menu
+/// follows its vertical anchors. Drag anywhere on the pill immediately to
+/// pin it instead. Placement always stays inside the visible safe area.
+class _FolioSelectionToolbarSurface extends StatefulWidget {
+  const _FolioSelectionToolbarSurface({
+    required this.anchors,
+    required this.buttonItems,
+    this.selectionId,
+    this.controller,
+    this.visible = true,
+    this.onHidden,
+  });
+
+  final TextSelectionToolbarAnchors anchors;
+  final List<ContextMenuButtonItem> buttonItems;
 
   /// Changes only when a new selection begins, never on scrolling or resizing.
   /// A changed identity clears both the captured horizontal anchor and the pin.
   final Object? selectionId;
 
   final FolioSelectionToolbarController? controller;
+  final bool visible;
+  final VoidCallback? onHidden;
 
   @override
-  State<FolioSelectionToolbar> createState() => _FolioSelectionToolbarState();
+  State<_FolioSelectionToolbarSurface> createState() =>
+      _FolioSelectionToolbarState();
 }
 
-class _FolioSelectionToolbarState extends State<FolioSelectionToolbar>
+class _FolioSelectionToolbarState extends State<_FolioSelectionToolbarSurface>
     with SingleTickerProviderStateMixin {
   final _localController = FolioSelectionToolbarController();
   final _layoutKey = GlobalKey();
@@ -95,6 +196,7 @@ class _FolioSelectionToolbarState extends State<FolioSelectionToolbar>
   Offset? _motionStart;
   Offset? _motionTarget;
   bool _motionScheduled = false;
+  bool _reducedMotion = false;
   Duration _motionStartedAt = Duration.zero;
   static const _motionDuration = Duration(milliseconds: 140);
 
@@ -109,6 +211,13 @@ class _FolioSelectionToolbarState extends State<FolioSelectionToolbar>
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _reducedMotion = MediaQuery.disableAnimationsOf(context);
+    if (_reducedMotion) _motion.stop();
+  }
+
+  @override
   void dispose() {
     _motion.dispose();
     super.dispose();
@@ -117,7 +226,7 @@ class _FolioSelectionToolbarState extends State<FolioSelectionToolbar>
   Offset _animatedPosition(Offset target) {
     // A drag is direct manipulation, not a series of animated destinations.
     // Keep animation state at the pointer so release cannot replay old motion.
-    if (_dragStart != null) {
+    if (_dragStart != null || _reducedMotion) {
       _position = _motionStart = _motionTarget = target;
       return target;
     }
@@ -158,7 +267,7 @@ class _FolioSelectionToolbarState extends State<FolioSelectionToolbar>
   }
 
   @override
-  void didUpdateWidget(FolioSelectionToolbar oldWidget) {
+  void didUpdateWidget(_FolioSelectionToolbarSurface oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.selectionId != widget.selectionId ||
         oldWidget.controller != widget.controller) {
@@ -270,16 +379,21 @@ class _FolioSelectionToolbarState extends State<FolioSelectionToolbar>
           math.max(media.padding.bottom, media.viewInsets.bottom) + 8,
         ),
       ),
-      child: GestureDetector(
-        key: _pillKey,
-        behavior: HitTestBehavior.opaque,
-        excludeFromSemantics: true,
-        dragStartBehavior: DragStartBehavior.down,
-        onPanStart: _startDrag,
-        onPanUpdate: _updateDrag,
-        onPanEnd: (_) => _finishDrag(),
-        onPanCancel: _finishDrag,
-        child: _FolioPill(actions: actions),
+      child: ScaleReveal(
+        visible: widget.visible,
+        animateOnMount: true,
+        onHidden: widget.onHidden,
+        child: GestureDetector(
+          key: _pillKey,
+          behavior: HitTestBehavior.opaque,
+          excludeFromSemantics: true,
+          dragStartBehavior: DragStartBehavior.down,
+          onPanStart: _startDrag,
+          onPanUpdate: _updateDrag,
+          onPanEnd: (_) => _finishDrag(),
+          onPanCancel: _finishDrag,
+          child: _FolioPill(actions: actions),
+        ),
       ),
     );
   }

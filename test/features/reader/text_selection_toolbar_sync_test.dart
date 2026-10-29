@@ -3,6 +3,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/features/reader/text/data/text_document.dart';
 import 'package:folio/features/reader/text/widgets/text_document_selection.dart';
+import 'package:folio/shared/selection/folio_selection_toolbar.dart';
 
 final _regionFinder = find.byWidgetPredicate(
   (widget) => widget is SelectableRegion,
@@ -34,6 +35,7 @@ void main() {
     );
     await tester.pumpWidget(
       MaterialApp(
+        builder: (context, child) => FolioSelectionToolbarHost(child: child!),
         theme: ThemeData(platform: TargetPlatform.android),
         home: Scaffold(
           body: TextDocumentSelection(

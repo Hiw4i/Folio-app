@@ -9,7 +9,6 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart'
     show
         Theme,
-        TextMagnifier,
         desktopTextSelectionHandleControls,
         materialTextSelectionHandleControls;
 import 'package:flutter/rendering.dart';
@@ -17,6 +16,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../../../shared/selection/folio_selection_toolbar.dart';
+import '../../../../shared/selection/selection_magnifier.dart';
 import '../../../../shared/selection/selection_visuals.dart';
 import '../data/text_document.dart';
 import '../logic/selection_edge_scroller.dart';
@@ -153,7 +153,7 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection>
     _regionKey.currentState?.hideToolbar(false);
     _handleMenu.remove();
     _updateHandle(finger);
-    final config = TextMagnifier.adaptiveMagnifierConfiguration;
+    final config = folioTextMagnifierConfiguration;
     final builder = config.magnifierBuilder;
     _magnifier.show(
       context: context,
@@ -738,7 +738,7 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection>
             TargetPlatform.windows => desktopTextSelectionHandleControls,
           },
         ),
-        magnifierConfiguration: TextMagnifier.adaptiveMagnifierConfiguration,
+        magnifierConfiguration: folioTextMagnifierConfiguration,
         focusNode: _focusNode,
         contextMenuBuilder: _menu,
         onSelectionChanged: _selectionChanged,

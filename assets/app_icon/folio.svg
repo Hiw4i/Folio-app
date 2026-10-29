@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="108" height="108" viewBox="0 0 108 108">
+  <title>Folio — folded-spine F</title>
+  <desc>A cream F paired with a slate rear leaf on ink black. All mark vertices stay within the central 66 dp safe circle.</desc>
+  <rect width="108" height="108" fill="#0B0C0E"/>
+  <polygon id="rear-leaf" fill="#5F6B7C" points="29,36 35,36 35,70 65,70 65,75 29,75"/>
+  <polygon id="folio" fill="#F4F3EF" points="40,31 77,31 77,42 51,42 51,50 69,50 69,61 51,61 51,79 40,79"/>
+</svg>

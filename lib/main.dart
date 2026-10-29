@@ -18,6 +18,7 @@ import 'features/library/logic/library_controller.dart';
 import 'features/reader/data/document_content_source.dart';
 import 'shared/android/android_storage_gateway.dart';
 import 'shared/glass/widgets/adaptive_glass_foreground.dart';
+import 'shared/selection/folio_selection_toolbar.dart';
 import 'shared/settings/folio_settings_controller.dart';
 import 'shared/settings/folio_settings_scope.dart';
 import 'shared/settings/folio_settings_store.dart';
@@ -140,7 +141,9 @@ class _FolioAppState extends State<FolioApp> {
                 selectionColor: appColors.selection,
                 child: DefaultTextStyle(
                   style: AppTextStyles.body(context),
-                  child: child ?? const SizedBox.shrink(),
+                  child: FolioSelectionToolbarHost(
+                    child: child ?? const SizedBox.shrink(),
+                  ),
                 ),
               ),
             ),

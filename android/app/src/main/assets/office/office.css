@@ -189,6 +189,33 @@ body[data-format="docx"] .docx-wrapper > section.docx > footer { flex-shrink: 0;
 /* Same selection palette as FolioColors; preserve authored text colours. */
 #document ::selection { background: transparent; }
 #document { -webkit-user-select: text; user-select: text; }
+body[data-format="pptx"] #document,
+body[data-format="pptx"] #document * { -webkit-user-select: none; user-select: none; }
+body[data-format="pptx"] #document .text-block,
+body[data-format="pptx"] #document .text-block * { -webkit-user-select: text; user-select: text; }
+body[data-format="pptx"] #document [data-folio-empty-text],
+body[data-format="pptx"] #document [data-folio-empty-text] * { -webkit-user-select: none; user-select: none; }
+body[data-format="pptx"] #document img,
+body[data-format="pptx"] #document svg { -webkit-user-select: none; user-select: none; -webkit-user-drag: none; }
+[data-folio-selection-handle] {
+  position: fixed;
+  width: 44px;
+  height: 44px;
+  z-index: 2147483647;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+[data-folio-selection-handle]::after {
+  content: '';
+  position: absolute;
+  top: 10px;
+  width: 22px;
+  height: 22px;
+  background: #c9d1dc;
+}
+[data-folio-selection-handle="start"]::after { right: 22px; border-radius: 50% 0 50% 50%; }
+[data-folio-selection-handle="end"]::after { left: 22px; border-radius: 0 50% 50% 50%; }
 #document { position: relative; }
 #folio-selection-highlight {
   position: absolute;

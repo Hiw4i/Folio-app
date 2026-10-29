@@ -7,6 +7,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../../../shared/selection/selection_visuals.dart';
+
 import '../data/office_document_gateway.dart';
 import '../logic/office_document_renderer_base.dart';
 import 'office_selection_overlay.dart';
@@ -172,7 +174,15 @@ class _OfficeDocumentPlatformViewState
                     id: params.id,
                     viewType: 'folio/office_view',
                     layoutDirection: TextDirection.ltr,
-                    creationParams: <String, Object?>{'sessionId': session.id},
+                    creationParams: <String, Object?>{
+                      'sessionId': session.id,
+                      'magnifierStyle': <String, double>{
+                        'width': folioSelectionMagnifierSize.width,
+                        'height': folioSelectionMagnifierSize.height,
+                        'cornerRadius': folioSelectionMagnifierCornerRadius,
+                        'zoom': folioSelectionMagnifierZoom,
+                      },
+                    },
                     creationParamsCodec: const StandardMessageCodec(),
                     onFocus: () => params.onFocusChanged(true),
                   )

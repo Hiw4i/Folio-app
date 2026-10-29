@@ -1,16 +1,22 @@
 import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart' show Magnifier;
 
 import '../theme/folio_theme.dart';
 
-/// The same highlight silhouette is used by the Flutter and PDF readers.
-/// Office mirrors this radius in reader-selection.js.
+/// Rounded silhouette for Flutter's full-height text line boxes.
 const double folioSelectionCornerRadius = 6;
 
 /// PDF fragments are glyph-tight, so their bars are barely taller than the
 /// text and the full radius above turns every end into a pill. The smaller
 /// radius keeps the same silhouette without looking rounder than in MD/TXT.
-const double folioPdfSelectionCornerRadius = 4;
-const Size folioSelectionMagnifierSize = Size(80, 40);
+/// Office's DOM ranges use the same tighter geometry and mirror this token.
+const double folioPdfSelectionCornerRadius = 2;
+
+// Material TextMagnifier is the MD reference. Native Office consumes these
+// logical-pixel values through its platform-view creation parameters too.
+const Size folioSelectionMagnifierSize = Magnifier.kDefaultMagnifierSize;
+const double folioSelectionMagnifierCornerRadius = 40;
+const double folioSelectionMagnifierZoom = 1.25;
 
 /// Rows this close horizontally belong to one visual line. The allowance is
 /// half the shorter fragment's height with this floor, because a marker that

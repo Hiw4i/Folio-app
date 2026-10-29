@@ -44,6 +44,7 @@
     pointer: null,
     pages: [],
     centers: [],
+    pageBounds: [],
     disposed: false,
     resizeFrame: 0,
   };
@@ -54,8 +55,8 @@
     cancelTap: () => { if (state.pointer) state.pointer.moved = true; },
   });
   const selection = window.FolioReaderSelection.create({
-    viewport, content: documentRoot, post, cancelMotion: () => motion.reset(),
-    visiblePages: () => state.pages,
+    viewport, content: documentRoot, post, format, cancelMotion: () => motion.reset(),
+    visiblePages: visiblePageElements,
   });
   window.FolioSelection = selection;
 
@@ -84,16 +85,32 @@
 
   function pageElements() { return state.pages; }
 
+  function visiblePageElements() {
+    if (format === 'pptx') return state.pages[state.position] ? [state.pages[state.position]] : [];
+    const top = viewport.scrollTop, bottom = top + viewport.clientHeight;
+    let lo = 0, hi = state.pageBounds.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (state.pageBounds[mid].bottom < top) lo = mid + 1;
+      else hi = mid;
+    }
+    const first = lo;
+    while (lo < state.pageBounds.length && state.pageBounds[lo].top <= bottom) lo++;
+    return state.pages.slice(first, lo);
+  }
+
   function refreshGeometry() {
     state.pages = Array.from(documentRoot.querySelectorAll(format === 'docx'
       ? '.docx-wrapper > section.docx' : '.folio-slide-frame'));
     if (format !== 'docx') return;
     const rect = viewport.getBoundingClientRect();
     // One read batch after layout. The scroll path never measures every page.
-    state.centers = state.pages.map((page) => {
+    state.pageBounds = state.pages.map((page) => {
       const r = page.getBoundingClientRect();
-      return r.top - rect.top + viewport.scrollTop + r.height / 2;
+      const top = r.top - rect.top + viewport.scrollTop;
+      return { top, bottom: top + r.height };
     });
+    state.centers = state.pageBounds.map((bounds) => (bounds.top + bounds.bottom) / 2);
   }
 
   // Word derives its position from the scroll offset. PowerPoint never
@@ -154,6 +171,7 @@
   }
 
   function wrapSlides() {
+    documentRoot.querySelectorAll('img').forEach((image) => { image.draggable = false; });
     const slides = Array.from(documentRoot.querySelectorAll('.slide'));
     slides.forEach((slide) => {
       if (slide.parentElement?.classList.contains('folio-slide-frame')) return;
@@ -435,7 +453,7 @@
       multitouch: false,
       scale: window.visualViewport?.scale || 1,
       interactive: isInteractive(event.target),
-      selectionActive: window.getSelection()?.isCollapsed === false,
+      selectionActive: selection.isActive(),
       scroll: viewport.scrollTop,
     };
   }, { passive: true });
@@ -462,13 +480,19 @@
     // чужого мультитача тоже молчит — кандидат создаётся только одним.
     const scale = window.visualViewport?.scale || 1;
     if (state.disposed || !state.ready || activePointers.size
-        || pointer.interactive || pointer.selectionActive || isInteractive(event.target)
+        || pointer.interactive || isInteractive(event.target)
         || pointer.multitouch || Math.abs(scale - (pointer.scale || 1)) > 0.001
-        || window.getSelection()?.isCollapsed === false) return;
+        ) return;
     const bounds = viewport.getBoundingClientRect();
     const x = event.clientX - bounds.left, y = event.clientY - bounds.top;
     if (x < 0 || x >= bounds.width || y < 0 || y >= bounds.height) return;
     const dx = event.clientX - pointer.x, dy = event.clientY - pointer.y;
+    if (pointer.selectionActive) {
+      if (!pointer.moved && event.timeStamp - pointer.startedAt <= tapTimeout
+          && Math.hypot(dx, dy) <= tapSlop && !selection.hitText(event.clientX, event.clientY)) selection.clear();
+      return; // The touch that dismisses selection never also navigates the reader.
+    }
+    if (selection.isActive()) return;
     if (format === 'pptx') {
       // На увеличенном слайде навигация полностью заблокирована: палец
       // панорамирует содержимое нативно, и ни свайп, ни тап по краю не

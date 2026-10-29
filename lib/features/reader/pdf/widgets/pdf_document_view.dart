@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui' show ViewFocusEvent, ViewFocusState;
 
 import 'package:flutter/gestures.dart' show GestureBinding, PointerEvent;
 import 'package:flutter/material.dart'
@@ -15,11 +16,13 @@ import 'package:flutter/widgets.dart';
 import 'package:pdfrx/pdfrx.dart';
 
 import '../../../../shared/selection/folio_selection_toolbar.dart';
+import '../../../../shared/selection/selection_magnifier.dart';
 import '../../../../shared/selection/selection_visuals.dart';
 import '../../../../shared/theme/folio_theme.dart';
 import '../../widgets/reader_loading_view.dart';
 import '../logic/pdf_document_renderer.dart';
 import '../logic/pdf_reading_layout.dart';
+import '../logic/pdf_selection_edge_scroller.dart';
 
 class PdfDocumentView extends StatefulWidget {
   const PdfDocumentView({
@@ -37,17 +40,26 @@ class PdfDocumentView extends StatefulWidget {
   State<PdfDocumentView> createState() => _PdfDocumentViewState();
 }
 
-class _PdfDocumentViewState extends State<PdfDocumentView> {
+class _PdfDocumentViewState extends State<PdfDocumentView>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const int _renderCacheBudget = 128 * 1024 * 1024;
 
   final PdfViewerController _controller = PdfViewerController();
+  late final PdfSelectionEdgeScroller _edgeScroller;
   late final PdfViewerParams _params;
+  int? _handlePointer;
+  Offset? _handlePosition;
+  int _documentGeneration = 0;
+  PdfDocumentRef? _activeDocumentRef;
   bool _selectingText = false;
   bool _selectionActionRunning = false;
   PdfTextSelectionRange? _selectedRange;
   final Map<int, PdfPageText> _selectedPageText = <int, PdfPageText>{};
-  final Set<int> _loadingSelectedPages = <int>{};
+  final Map<int, Future<PdfPageText>> _loadingSelectedPages = {};
   final Map<int, List<Rect>> _paintedSelectionRects = <int, List<Rect>>{};
+  final Map<int, (Rect, Path)> _selectionPaths = {};
+  final Stopwatch _hapticClock = Stopwatch()..start();
+  int? _lastSelectionHaptic;
   bool _selectionRepaintScheduled = false;
 
   /// Identity of the range currently painted (`page#index` pairs). pdfrx
@@ -67,6 +79,9 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _edgeScroller.dispose();
+    _documentGeneration++;
     GestureBinding.instance.pointerRouter.removeGlobalRoute(
       _pointerRouterEvent,
     );
@@ -78,6 +93,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     _selectedPageText.clear();
     _loadingSelectedPages.clear();
     _paintedSelectionRects.clear();
+    _selectionPaths.clear();
     _selectedRange = null;
     super.dispose();
   }
@@ -88,19 +104,34 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     // Cached page text belongs to one document. The widget carries no key, so
     // a renderer swap reuses this state and must not keep stale page text.
     if (!identical(widget.renderer, oldWidget.renderer)) {
-      _stopSelectionPolling();
-      _liveSelectionKey = null;
-      _selectedPageText.clear();
-      _loadingSelectedPages.clear();
-      _paintedSelectionRects.clear();
-      _selectedRange = null;
-      _selectingText = false;
+      _resetSelectionDocument();
     }
+  }
+
+  void _resetSelectionDocument() {
+    _cancelSelectionDrag();
+    _documentGeneration++;
+    _stopSelectionPolling();
+    _liveSelectionKey = null;
+    _selectedPageText.clear();
+    _loadingSelectedPages.clear();
+    _paintedSelectionRects.clear();
+    _selectionPaths.clear();
+    _selectedRange = null;
+    _selectingText = false;
   }
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _edgeScroller = PdfSelectionEdgeScroller(
+      vsync: this,
+      controller: _controller,
+      viewport: _selectionViewport,
+      loadPageText: _loadSelectedPageText,
+      onSelectionChanged: _applyLiveSelection,
+    );
     // Global pointer routes are dispatched after the gesture recognizers, so
     // pdfrx has already moved its selection by the time this runs.
     GestureBinding.instance.pointerRouter.addGlobalRoute(_pointerRouterEvent);
@@ -131,21 +162,42 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
         // pdfrx debounces `onTextSelectionChange` by 300 ms, so read the live
         // range from the handle callbacks to paint the highlight while the
         // handle is still moving.
-        onSelectionHandlePanStart: (_) => _applyLiveSelection(),
+        onSelectionHandlePanStart: (anchor) {
+          final position = _handlePosition;
+          if (position != null) _edgeScroller.start(anchor, position);
+          _applyLiveSelection();
+        },
         onSelectionHandlePanUpdate: (_, _) => _applyLiveSelection(),
-        onSelectionHandlePanEnd: (_) => _applyLiveSelection(),
+        onSelectionHandlePanEnd: (_) {
+          final position = _handlePosition;
+          if (position != null) _edgeScroller.update(position);
+          _cancelSelectionDrag();
+          _applyLiveSelection();
+        },
         // Use the same Material handle geometry as SelectionArea in MD/TXT.
         buildSelectionHandle: (context, anchor, state) {
           final leading = anchor.type == PdfTextSelectionAnchorType.a;
           final rtl =
               anchor.direction == PdfTextDirection.rtl ||
               anchor.direction == PdfTextDirection.vrtl;
-          return materialTextSelectionHandleControls.buildHandle(
-            context,
-            leading != rtl
-                ? TextSelectionHandleType.left
-                : TextSelectionHandleType.right,
-            22,
+          return Listener(
+            onPointerDown: (event) {
+              if (_edgeScroller.dragging) _cancelSelectionDrag();
+              _handlePointer = event.pointer;
+              _handlePosition = event.position;
+            },
+            onPointerMove: (event) {
+              if (event.pointer == _handlePointer) {
+                _handlePosition = event.position;
+              }
+            },
+            child: materialTextSelectionHandleControls.buildHandle(
+              context,
+              leading != rtl
+                  ? TextSelectionHandleType.left
+                  : TextSelectionHandleType.right,
+              22,
+            ),
           );
         },
         calcSelectionHandleOffset: (context, anchor, state) {
@@ -158,10 +210,18 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
           );
           return Offset(0, (rect?.height ?? 22) + 22);
         },
-        magnifier: const PdfViewerSelectionMagnifierParams(
+        magnifier: PdfViewerSelectionMagnifierParams(
           // Avoid repeatedly evicting the magnifier's current page image.
           maxImageBytesCachedOnMemory: 8 * 1024 * 1024,
           builder: _buildCompactMagnifier,
+          getMagnifierRectForAnchor: (anchor, params, pointer) =>
+              folioSelectionMagnifierSourceRect(
+                focalPoint: Offset(
+                  _controller.localToDocument(pointer).dx,
+                  anchor.rect.center.dy,
+                ),
+                viewportZoom: _controller.currentZoom,
+              ),
         ),
       ),
       buildContextMenu: _buildContextMenu,
@@ -175,7 +235,8 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       activeMatchTextColor: appColors.pdfActiveSearchMatch,
       pagePaintCallbacks: <PdfViewerPagePaintCallback>[
         _paintSelection,
-        widget.renderer.paintSearchMatches,
+        (canvas, rect, page) =>
+            widget.renderer.paintSearchMatches(canvas, rect, page),
       ],
       behaviorControlParams: const PdfViewerBehaviorControlParams(
         loadPageDimensionsOnDemand: true,
@@ -184,9 +245,11 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
         trailingPageLoadingDelay: Duration(milliseconds: 30),
         enableLowResolutionPagePreview: true,
       ),
-      onViewerReady: widget.renderer.attachViewer,
-      onDocumentLoadFinished: widget.renderer.documentLoadFinished,
-      onPageChanged: widget.renderer.pageChanged,
+      onViewerReady: (document, controller) =>
+          widget.renderer.attachViewer(document, controller),
+      onDocumentLoadFinished: (ref, succeeded) =>
+          widget.renderer.documentLoadFinished(ref, succeeded),
+      onPageChanged: (page) => widget.renderer.pageChanged(page),
       onInteractionUpdate: _interactionUpdated,
       onGeneralTap: _generalTap,
       loadingBannerBuilder: (context, downloaded, total) {
@@ -237,6 +300,25 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   }
 
   void _pointerRouterEvent(PointerEvent event) {
+    // pdfrx's padded hit target extends beyond the painted handle. Remember a
+    // down within that region too; the native pan-start callback still decides
+    // whether this pointer is actually selecting.
+    if (event is PointerDownEvent &&
+        _handlePointer == null &&
+        (_selectionViewport()?.inflate(48).contains(event.position) ?? false)) {
+      _handlePointer = event.pointer;
+      _handlePosition = event.position;
+    }
+    if (_handlePointer == event.pointer) {
+      if (event is PointerMoveEvent) {
+        _handlePosition = event.position;
+        _edgeScroller.update(event.position);
+      } else if (event is PointerUpEvent || event is PointerCancelEvent) {
+        _cancelSelectionDrag();
+      }
+    } else if (event is PointerDownEvent && _edgeScroller.dragging) {
+      _cancelSelectionDrag();
+    }
     // Only pointer events can move a text selection.
     if (event is PointerDownEvent ||
         event is PointerMoveEvent ||
@@ -244,6 +326,28 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
         event is PointerCancelEvent) {
       _applyLiveSelection();
     }
+  }
+
+  Rect? _selectionViewport() {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) return null;
+    return box.localToGlobal(Offset.zero) & box.size;
+  }
+
+  void _cancelSelectionDrag() {
+    _edgeScroller.stop();
+    _handlePointer = null;
+    _handlePosition = null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) _cancelSelectionDrag();
+  }
+
+  @override
+  void didChangeViewFocus(ViewFocusEvent event) {
+    if (event.state == ViewFocusState.unfocused) _cancelSelectionDrag();
   }
 
   static String? _selectionKey(PdfTextSelectionRange? range) {
@@ -260,12 +364,18 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     _selectedRange = range;
     _selectingText = range != null;
     _paintedSelectionRects.clear();
+    _selectionPaths.clear();
     if (range == null) {
+      _cancelSelectionDrag();
       if (hadSelection) _scheduleSelectionRepaint();
       return;
     }
     // Same tick as the shared selection in MD/TXT/PPTX/DOCX.
-    unawaited(HapticFeedback.selectionClick());
+    final now = _hapticClock.elapsedMilliseconds;
+    if (_lastSelectionHaptic == null || now - _lastSelectionHaptic! >= 50) {
+      _lastSelectionHaptic = now;
+      unawaited(HapticFeedback.selectionClick());
+    }
     _scheduleSelectionRepaint();
     // Keep the page text cached across drag updates. Clearing it on every
     // change made the middle pages of a multi-page selection reload while the
@@ -281,6 +391,31 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
         _selectedPageText.remove(_selectedPageText.keys.first);
       }
     }
+  }
+
+  Future<PdfPageText> _loadSelectedPageText(PdfPage page) {
+    final cached = _selectedPageText[page.pageNumber];
+    if (cached != null) return Future.value(cached);
+    return _loadingSelectedPages.putIfAbsent(page.pageNumber, () {
+      final generation = _documentGeneration;
+      return page.loadStructuredText().then(
+        (loaded) {
+          if (!mounted || generation != _documentGeneration) return loaded;
+          _loadingSelectedPages.remove(page.pageNumber);
+          _selectedPageText[page.pageNumber] = loaded;
+          while (_selectedPageText.length > _pageTextCacheLimit) {
+            _selectedPageText.remove(_selectedPageText.keys.first);
+          }
+          return loaded;
+        },
+        onError: (Object error, StackTrace stack) {
+          if (generation == _documentGeneration) {
+            _loadingSelectedPages.remove(page.pageNumber);
+          }
+          Error.throwWithStackTrace(error, stack);
+        },
+      );
+    });
   }
 
   /// A long press picks a word only after its page text has been extracted,
@@ -347,25 +482,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
     Offset pointerPosition,
     Offset magnifierPosition,
   ) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-            color: Color(0x44000000),
-            blurRadius: 8,
-            offset: Offset(0, 3),
-          ),
-        ],
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: SizedBox.fromSize(
-          size: folioSelectionMagnifierSize,
-          child: content,
-        ),
-      ),
-    );
+    return FolioSelectionMagnifierFrame(child: content);
   }
 
   void _paintSelection(Canvas canvas, Rect pageRect, PdfPage page) {
@@ -375,18 +492,21 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
         page.pageNumber > range.end.text.pageNumber) {
       return;
     }
+    final cachedPath = _selectionPaths[page.pageNumber];
+    if (cachedPath != null && cachedPath.$1 == pageRect) {
+      canvas.drawPath(cachedPath.$2, Paint()..color = appColors.selection);
+      return;
+    }
     var text = _selectedPageText[page.pageNumber];
     if (text == null) {
-      if (_loadingSelectedPages.add(page.pageNumber)) {
+      if (!_loadingSelectedPages.containsKey(page.pageNumber)) {
+        final generation = _documentGeneration;
         unawaited(
-          page
-              .loadStructuredText()
+          _loadSelectedPageText(page)
               .then((loaded) {
-                _loadingSelectedPages.remove(page.pageNumber);
-                if (!mounted) return;
+                if (!mounted || generation != _documentGeneration) return;
                 // The extracted text belongs to the page, not to one selection,
                 // so it is stored even when the selection moved on meanwhile.
-                _selectedPageText[page.pageNumber] = loaded;
                 final current = _selectedRange;
                 if (current == null ||
                     page.pageNumber < current.start.text.pageNumber ||
@@ -396,7 +516,6 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
                 _scheduleSelectionRepaint();
               })
               .catchError((Object error) {
-                _loadingSelectedPages.remove(page.pageNumber);
                 debugPrint('Folio PDF selection geometry failed: $error');
               }),
         );
@@ -420,13 +539,17 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
       if (!rect.isEmpty && rect.isFinite) rects.add(rect);
     }
     _paintedSelectionRects[page.pageNumber] = rects;
-    while (_paintedSelectionRects.length > 8) {
-      _paintedSelectionRects.remove(_paintedSelectionRects.keys.first);
-    }
-    canvas.drawPath(
-      folioSelectionPath(rects, radius: folioPdfSelectionCornerRadius),
-      Paint()..color = appColors.selection,
+    final path = folioSelectionPath(
+      rects,
+      radius: folioPdfSelectionCornerRadius,
     );
+    _selectionPaths[page.pageNumber] = (pageRect, path);
+    while (_paintedSelectionRects.length > 8) {
+      final oldest = _paintedSelectionRects.keys.first;
+      _paintedSelectionRects.remove(oldest);
+      _selectionPaths.remove(oldest);
+    }
+    canvas.drawPath(path, Paint()..color = appColors.selection);
   }
 
   Widget? _buildContextMenu(
@@ -520,6 +643,10 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
   @override
   Widget build(BuildContext context) {
     final documentRef = widget.renderer.documentRef;
+    if (!identical(documentRef, _activeDocumentRef)) {
+      _activeDocumentRef = documentRef;
+      _resetSelectionDocument();
+    }
     if (documentRef == null) {
       return const SizedBox.shrink();
     }
@@ -537,7 +664,17 @@ class _PdfDocumentViewState extends State<PdfDocumentView> {
             cursorColor: appColors.cursor,
           ),
         ),
-        child: PdfViewer(documentRef, controller: _controller, params: _params),
+        child: Focus(
+          canRequestFocus: false,
+          onFocusChange: (focused) {
+            if (!focused) _cancelSelectionDrag();
+          },
+          child: PdfViewer(
+            documentRef,
+            controller: _controller,
+            params: _params,
+          ),
+        ),
       ),
     );
   }

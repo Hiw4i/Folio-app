@@ -9,4 +9,11 @@
         <item name="android:textSelectHandleRight">@drawable/folio_selection_handle_right</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>
+    <!-- Office owns pointer capture and edge scrolling in the document. Keep
+         Chromium's ActionMode/long-press selection, with no competing handles. -->
+    <style name="FolioOfficeOwnedSelectionTheme" parent="FolioOfficeSelectionTheme">
+        <item name="android:textSelectHandleLeft">@drawable/folio_selection_handle_hidden</item>
+        <item name="android:textSelectHandleRight">@drawable/folio_selection_handle_hidden</item>
+        <item name="android:textSelectHandle">@drawable/folio_selection_handle_hidden</item>
+    </style>
 </resources>

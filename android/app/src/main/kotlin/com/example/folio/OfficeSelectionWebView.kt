@@ -9,12 +9,24 @@ import android.view.View
 import android.graphics.Rect
 import android.webkit.WebView
 
-/** Keep Chromium's selection/handles, but let Flutter own the action pill.
+/** Keep Chromium's selection, with application-owned handles and action pill.
  * Returning null/false from startActionMode would also disable native handles. */
-internal class OfficeSelectionWebView(context: Context) : WebView(
-    ContextThemeWrapper(context, R.style.FolioOfficeSelectionTheme),
+internal class OfficeSelectionWebView(context: Context, ownedSelectionHandles: Boolean = false) : WebView(
+    ContextThemeWrapper(context, if (ownedSelectionHandles) R.style.FolioOfficeOwnedSelectionTheme
+        else R.style.FolioOfficeSelectionTheme),
 ) {
     private var selectionMode: ActionMode? = null
+    var onSelectionInteractionCancelled: (() -> Unit)? = null
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus) onSelectionInteractionCancelled?.invoke()
+    }
+
+    override fun onDetachedFromWindow() {
+        onSelectionInteractionCancelled?.invoke()
+        super.onDetachedFromWindow()
+    }
 
     override fun startActionMode(callback: ActionMode.Callback): ActionMode? =
         startActionMode(callback, ActionMode.TYPE_FLOATING)

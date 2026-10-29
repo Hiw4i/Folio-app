@@ -5,6 +5,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/shared/selection/selection_visuals.dart';
 
 void main() {
+  test('glyph-tight PDF selection keeps the smaller exposed corner', () {
+    final path = folioSelectionPath(const [
+      Rect.fromLTWH(10, 10, 100, 12),
+    ], radius: folioPdfSelectionCornerRadius);
+    expect(path.contains(const Offset(10.8, 10.8)), isTrue);
+    expect(path.contains(const Offset(10, 10)), isFalse);
+  });
+
   test('a selection below the viewport anchors at the bottom, not the top', () {
     final anchors = folioVisibleSelectionAnchors(
       original: null,

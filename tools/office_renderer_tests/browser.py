@@ -32,12 +32,12 @@ def render(browser, fixture: Path, *, size=(412, 915), initial_script='', assets
       window.fetch=async()=>new Response(bytes);
     }''',base64.b64encode(fixture.read_bytes()).decode())
     if initial_script: page.evaluate(initial_script)
-    html=(assets/f'{fmt}.html').read_text()
-    for href in re.findall(r'<link[^>]+href="([^"]+)"',html): page.add_style_tag(content=(assets/href).read_text())
+    html=(assets/f'{fmt}.html').read_text(encoding='utf-8')
+    for href in re.findall(r'<link[^>]+href="([^"]+)"',html): page.add_style_tag(content=(assets/href).read_text(encoding='utf-8'))
     for src in re.findall(r'<script[^>]+src="([^"]+)"',html):
         if src=='office.js' and fmt=='pptx': page.evaluate('() => {JSZipUtils.getBinaryContent=(url,callback)=>callback(null,fixtureBuffer)}')
         # The original host required a URL query; injected pages use data-format.
-        code=(assets/src).read_text().replace("const format = params.get('format');",f"const format = {fmt!r};")
+        code=(assets/src).read_text(encoding='utf-8').replace("const format = params.get('format');",f"const format = {fmt!r};")
         page.evaluate(code+'\n//# sourceURL='+src)
     page.wait_for_function('events.some(event=>event.type==="ready"||event.type==="error")',timeout=20000)
     page.wait_for_timeout(60)

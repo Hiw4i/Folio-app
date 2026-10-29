@@ -33,6 +33,13 @@ class OfficeRendererTests(unittest.TestCase):
         self.assertTrue(any(e['type']=='ready' for e in events),events)
         return page
 
+    def assert_slide_frame(self, page, index, count=2):
+        self.assertEqual(page.locator('.folio-slide-frame.is-active').count(),1)
+        self.assertTrue(page.locator('.folio-slide-frame').nth(index).is_visible())
+        self.assertEqual(page.evaluate('document.getElementById("viewport").scrollLeft'),0)
+        self.assertEqual(page.evaluate('events.filter(e=>e.type==="position").at(-1)'),
+            {'type':'position','current':index+1,'count':count})
+
     def pixel(self, page, x, y):
         return Image.open(io.BytesIO(page.screenshot())).convert('RGB').getpixel((int(x),int(y)))
 
@@ -371,15 +378,17 @@ class OfficeRendererTests(unittest.TestCase):
         page = self.load('basic.pptx')
         self.clear_events(page)
         page.mouse.click(390, 450)
-        page.wait_for_function('Math.abs(document.getElementById("viewport").scrollLeft - 412) < 1')
+        page.wait_for_function('events.some(e=>e.type==="position"&&e.current===2)')
         page.wait_for_timeout(60)
         self.assertTrue(page.evaluate('events.some(e => e.type === "position" && e.current === 2)'))
         self.assert_no_chrome_events(page)
+        self.assert_slide_frame(page,1)
         page.mouse.click(20, 450)
-        page.wait_for_function('document.getElementById("viewport").scrollLeft < 1')
+        page.wait_for_function('events.filter(e=>e.type==="position").at(-1).current===1')
         page.wait_for_timeout(60)
         self.assertTrue(page.evaluate('events.some(e => e.type === "position" && e.current === 1)'))
         self.assert_no_chrome_events(page)
+        self.assert_slide_frame(page,0)
 
     def test_pptx_first_and_last_edge_do_not_toggle_chrome(self):
         page = self.load('basic.pptx')
@@ -393,14 +402,14 @@ class OfficeRendererTests(unittest.TestCase):
         page.mouse.click(390, 450)
         page.wait_for_timeout(80)
         self.assert_no_chrome_events(page)
-        self.assertAlmostEqual(page.evaluate('document.getElementById("viewport").scrollLeft'), 412, delta=1)
+        self.assert_slide_frame(page,1)
 
     def test_pptx_programmatic_navigation_does_not_emit_chrome_scroll(self):
         page = self.load('basic.pptx')
         self.clear_events(page)
         page.evaluate('FolioOffice.goToPosition(1, false)')
-        # Explicit instant must override the viewport's CSS smooth behavior.
-        self.assertAlmostEqual(page.evaluate('document.getElementById("viewport").scrollLeft'), 412, delta=1)
+        # Programmatic navigation swaps one visible frame, with no scroll.
+        self.assert_slide_frame(page,1)
         page.wait_for_timeout(80)
         self.assert_no_chrome_events(page)
 
@@ -418,10 +427,11 @@ class OfficeRendererTests(unittest.TestCase):
             })
             page.wait_for_timeout(20)
         session.send('Input.dispatchTouchEvent', {'type': 'touchEnd', 'touchPoints': []})
-        page.wait_for_function('Math.abs(document.getElementById("viewport").scrollLeft - 412) < 1')
+        page.wait_for_function('events.some(e=>e.type==="position"&&e.current===2)')
         page.wait_for_timeout(80)
         self.assertTrue(page.evaluate('events.some(e => e.type === "position" && e.current === 2)'))
         self.assert_no_chrome_events(page)
+        self.assert_slide_frame(page,1)
         session.detach()
 
     def test_pptx_two_finger_drag_never_navigates_or_toggles_chrome(self):
@@ -523,7 +533,7 @@ class OfficeRendererTests(unittest.TestCase):
                 self.clear_events(page)
                 page.set_viewport_size({'width': width, 'height': height})
                 page.wait_for_timeout(150)
-                self.assertAlmostEqual(page.evaluate('document.getElementById("viewport").scrollLeft'), width, delta=1)
+                self.assert_slide_frame(page,1)
                 self.assertTrue(page.evaluate('events.some(e => e.type === "position" && e.current === 2)'))
                 self.assert_no_chrome_events(page)
 
