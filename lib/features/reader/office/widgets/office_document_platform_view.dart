@@ -7,11 +7,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
-import '../../../../shared/selection/selection_visuals.dart';
-
 import '../data/office_document_gateway.dart';
 import '../logic/office_document_renderer_base.dart';
 import 'office_selection_overlay.dart';
+import 'office_selection_magnifier.dart';
 
 class OfficeDocumentPlatformView extends StatefulWidget {
   const OfficeDocumentPlatformView({
@@ -30,13 +29,27 @@ class OfficeDocumentPlatformView extends StatefulWidget {
       _OfficeDocumentPlatformViewState();
 }
 
-class _OfficeDocumentPlatformViewState
-    extends State<OfficeDocumentPlatformView> {
+class _OfficeDocumentPlatformViewState extends State<OfficeDocumentPlatformView>
+    with WidgetsBindingObserver {
   _MethodChannelOfficeView? _controller;
   OfficeDocumentRendererBase? _attachedRenderer;
   String? _attachedSessionId;
   OfficeSelectionSnapshot _selection = OfficeSelectionSnapshot.empty;
   bool _selectionCommandRunning = false;
+  final ValueNotifier<Offset?> _magnifierSource = ValueNotifier(null);
+  bool _appActive = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appActive = state == AppLifecycleState.resumed;
+    if (!_appActive) _magnifierSource.value = null;
+  }
 
   @override
   void didUpdateWidget(OfficeDocumentPlatformView oldWidget) {
@@ -92,8 +105,15 @@ class _OfficeDocumentPlatformViewState
     }
     renderer.handleViewEvent(event);
     switch (event['type']) {
+      case 'selectionHandle':
+        _magnifierSource.value = _appActive && _selection.active
+            ? officeSelectionMagnifierSource(event)
+            : null;
+      case 'error':
+        _magnifierSource.value = null;
       case 'selection':
         final next = OfficeSelectionSnapshot.fromEvent(event);
+        if (!next.active) _magnifierSource.value = null;
         if (next != _selection) {
           setState(() => _selection = next);
         }
@@ -134,6 +154,7 @@ class _OfficeDocumentPlatformViewState
     _attachedSessionId = null;
     _selection = OfficeSelectionSnapshot.empty;
     _selectionCommandRunning = false;
+    _magnifierSource.value = null;
     if (controller != null) {
       // Detach from its actual owner, not the newly supplied widget.renderer.
       renderer?.detachView(controller);
@@ -143,7 +164,9 @@ class _OfficeDocumentPlatformViewState
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _detach();
+    _magnifierSource.dispose();
     super.dispose();
   }
 
@@ -159,8 +182,9 @@ class _OfficeDocumentPlatformViewState
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
-          // Chromium's native text magnifier needs a real Android surface.
-          // The texture-backed AndroidView samples black pixels on selection.
+          // Office content must participate in Flutter's texture composition:
+          // glass blur and adaptive foregrounds need the actual document pixels.
+          // Forced HC creates separate cropped overlay surfaces above WebView.
           PlatformViewLink(
             viewType: 'folio/office_view',
             surfaceFactory: (context, controller) => AndroidViewSurface(
@@ -170,19 +194,11 @@ class _OfficeDocumentPlatformViewState
               hitTestBehavior: PlatformViewHitTestBehavior.opaque,
             ),
             onCreatePlatformView: (params) =>
-                PlatformViewsService.initExpensiveAndroidView(
+                PlatformViewsService.initSurfaceAndroidView(
                     id: params.id,
                     viewType: 'folio/office_view',
                     layoutDirection: TextDirection.ltr,
-                    creationParams: <String, Object?>{
-                      'sessionId': session.id,
-                      'magnifierStyle': <String, double>{
-                        'width': folioSelectionMagnifierSize.width,
-                        'height': folioSelectionMagnifierSize.height,
-                        'cornerRadius': folioSelectionMagnifierCornerRadius,
-                        'zoom': folioSelectionMagnifierZoom,
-                      },
-                    },
+                    creationParams: <String, Object?>{'sessionId': session.id},
                     creationParamsCodec: const StandardMessageCodec(),
                     onFocus: () => params.onFocusChanged(true),
                   )
@@ -201,6 +217,14 @@ class _OfficeDocumentPlatformViewState
               onCopy: () => unawaited(_selectionCommand('copySelection')),
               onSelectAll: () => unawaited(_selectionCommand('selectAll')),
             ),
+          // Only the loupe rebuilds as its source moves. Native scrolling and
+          // DOM handle updates retain the WebView and its platform controller.
+          ValueListenableBuilder<Offset?>(
+            valueListenable: _magnifierSource,
+            builder: (context, source, _) => source == null
+                ? const SizedBox.shrink()
+                : OfficeSelectionMagnifier(normalizedSource: source),
+          ),
         ],
       ),
     );

@@ -10,6 +10,7 @@ import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
 import 'package:folio/features/reader/widgets/file_info_sheet.dart';
+import 'package:folio/shared/glass/widgets/adaptive_glass_foreground.dart';
 import 'package:folio/shared/glass/widgets/liquid_glass_control.dart';
 import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
 import 'package:folio/shared/theme/folio_theme.dart';
@@ -27,6 +28,13 @@ void main() {
     sizeBytes: 120,
     modifiedAt: DateTime.utc(2026, 9, 13),
   );
+
+  /// Foreground opacity of the retained reader-menu content: 0 while the
+  /// morph is collapsed, so closed-but-mounted is distinguishable from open.
+  double menuContentOpacity(WidgetTester tester) =>
+      AdaptiveGlassEffects.of(
+        tester.element(find.text('Remove from Recents')),
+      ).opacity;
 
   Future<void> openReader(WidgetTester tester) async {
     await tester.pumpWidget(
@@ -317,7 +325,8 @@ void main() {
         find.byKey(const ValueKey<String>('reader_surface')),
         findsOneWidget,
       );
-      expect(find.text('Remove from Recents'), findsNothing);
+      // The menu is closed: its retained content is fully faded out.
+      expect(menuContentOpacity(tester), 0);
     }
     await tester.binding.handlePopRoute();
     await tester.pumpAndSettle();
@@ -441,7 +450,8 @@ void main() {
 
     await tester.tapAt(const Offset(24, 430));
     await tester.pumpAndSettle();
-    expect(find.text('Remove from Recents'), findsNothing);
+    // The menu is closed: its retained content is fully faded out.
+    expect(menuContentOpacity(tester), 0);
     expect(
       find.byKey(const ValueKey<String>('reader_menu_button')),
       findsOneWidget,

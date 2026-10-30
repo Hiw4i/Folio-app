@@ -20,9 +20,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.widget.Magnifier
 import android.view.HapticFeedbackConstants
-import kotlin.math.roundToInt
 import androidx.webkit.WebSettingsCompat
 import androidx.webkit.WebViewFeature
 import androidx.webkit.WebViewAssetLoader
@@ -43,8 +41,7 @@ internal class OfficePlatformViewFactory(
         val parameters = (args as? Map<*, *>) ?: emptyMap<Any, Any>()
         val sessionId = parameters["sessionId"] as? String
         val session = sessionId?.let(documents::session)
-        return OfficePlatformView(context, viewId, messenger, session,
-            parameters["magnifierStyle"] as? Map<*, *> ?: emptyMap<Any, Any>())
+        return OfficePlatformView(context, viewId, messenger, session)
     }
 }
 
@@ -54,7 +51,6 @@ internal class OfficePlatformView(
     viewId: Int,
     messenger: BinaryMessenger,
     private val session: OfficeDocumentSession?,
-    private val magnifierStyle: Map<*, *>,
 ) : PlatformView {
     private val viewContext = context
     private val channel = MethodChannel(messenger, "folio/office_view/$viewId")
@@ -62,9 +58,6 @@ internal class OfficePlatformView(
     private var disposed = false
     private var started = false
     private val webView = OfficeSelectionWebView(context, ownedSelectionHandles = true)
-    private var selectionMagnifier: Magnifier? = null
-    private var magnifierSourceX = Float.NaN
-    private var magnifierSourceY = Float.NaN
     private val assetLoader: WebViewAssetLoader
 
     init {
@@ -87,8 +80,6 @@ internal class OfficePlatformView(
     override fun dispose() {
         if (disposed) return
         disposed = true
-        selectionMagnifier?.dismiss()
-        selectionMagnifier = null
         webView.onSelectionInteractionCancelled = null
         channel.setMethodCallHandler(null)
         webView.apply {
@@ -214,7 +205,13 @@ internal class OfficePlatformView(
         // would deadlock the handshake. Method-channel events only need the
         // main thread, not window attachment.
         mainHandler.post {
-            if (!disposed) channel.invokeMethod("event", event)
+            if (!disposed) {
+                val outgoing = if (event["type"] == "selectionHandle" &&
+                    (!webView.isAttachedToWindow || !webView.hasWindowFocus())) {
+                    mapOf("type" to "selectionHandle", "active" to false)
+                } else event
+                channel.invokeMethod("event", outgoing)
+            }
         }
     }
 
@@ -229,10 +226,8 @@ internal class OfficePlatformView(
                 }
                 return
             }
-            if (json.optString("type") == "selectionHandle") {
-                updateSelectionMagnifier(json)
-                return
-            }
+            // Forward owned handle coordinates to Flutter. The document is a
+            // TLHC texture; Android's window Magnifier cannot sample it.
             val event = mutableMapOf<String, Any?>()
             json.keys().forEach { key ->
                 val value = json.opt(key)
@@ -248,48 +243,6 @@ internal class OfficePlatformView(
         }
     }
 
-    private fun styleValue(name: String, fallback: Double, minimum: Double, maximum: Double): Double {
-        val value = (magnifierStyle[name] as? Number)?.toDouble() ?: return fallback
-        return if (value.isFinite()) value.coerceIn(minimum, maximum) else fallback
-    }
-
-    private fun updateSelectionMagnifier(event: JSONObject) {
-        // Owned DOM handles use the platform magnifier's public API. Only
-        // normalized source coordinates cross this bridge, never selected text.
-        val active = event.optBoolean("active")
-        val x = event.optDouble("x", Double.NaN)
-        val y = event.optDouble("y", Double.NaN)
-        mainHandler.post {
-            if (disposed) return@post
-            if (!active || !x.isFinite() || !y.isFinite() || !webView.isAttachedToWindow
-                || !webView.hasWindowFocus()) {
-                selectionMagnifier?.dismiss()
-                selectionMagnifier = null
-                return@post
-            }
-            val magnifier = selectionMagnifier ?: Magnifier.Builder(webView)
-                .setSize(styleValue("width", 77.37, 1.0, 200.0).times(webView.resources.displayMetrics.density).roundToInt(),
-                    styleValue("height", 37.9, 1.0, 100.0).times(webView.resources.displayMetrics.density).roundToInt())
-                .setCornerRadius(styleValue("cornerRadius", 40.0, 0.0, 100.0).toFloat() * webView.resources.displayMetrics.density)
-                .setInitialZoom(styleValue("zoom", 1.25, 1.0, 4.0).toFloat())
-                .setOverlay(android.graphics.drawable.ColorDrawable(Color.argb(8, 158, 158, 158)))
-                .build().also {
-                selectionMagnifier = it
-                magnifierSourceX = Float.NaN
-                magnifierSourceY = Float.NaN
-            }
-            val sourceX = (x.coerceIn(0.0, 1.0) * webView.width).toFloat()
-            val sourceY = (y.coerceIn(0.0, 1.0) * webView.height).toFloat()
-            if (sourceX == magnifierSourceX && sourceY == magnifierSourceY) {
-                magnifier.update()
-            } else {
-                magnifier.show(sourceX, sourceY)
-                magnifierSourceX = sourceX
-                magnifierSourceY = sourceY
-            }
-        }
-    }
-
     private fun blockedResponse(): WebResourceResponse = WebResourceResponse(
         "text/plain",
         "utf-8",
@@ -301,12 +254,12 @@ internal class OfficePlatformView(
 
     private fun configureWebView() {
         webView.onSelectionInteractionCancelled = {
-            selectionMagnifier?.dismiss()
-            selectionMagnifier = null
-            if (!disposed) evaluate("window.FolioSelection?.cancelDrag();")
+            if (!disposed) {
+                emit(mapOf("type" to "selectionHandle", "active" to false))
+                evaluate("window.FolioSelection?.cancelDrag();")
+            }
         }
-        // The Android selection magnifier samples the WebView's own surface.
-        // An opaque backing prevents a black loupe around transparent pages.
+        // Opaque document gutters also provide deterministic backdrop pixels.
         webView.setBackgroundColor(Color.rgb(11, 12, 14))
         // Only our shared spring should provide edge feedback (no Android glow/stretch).
         webView.overScrollMode = WebView.OVER_SCROLL_NEVER
@@ -442,8 +395,6 @@ internal class OfficePlatformView(
                 )
                 if (!disposed) {
                     disposed = true
-                    selectionMagnifier?.dismiss()
-                    selectionMagnifier = null
                     webView.onSelectionInteractionCancelled = null
                     channel.setMethodCallHandler(null)
                     webView.removeJavascriptInterface("FolioBridge")

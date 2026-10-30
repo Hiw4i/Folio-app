@@ -272,6 +272,7 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                     Positioned.fromRect(
                       rect: opticalBounds,
                       child: GlassShell(
+                        shareBackdrop: false,
                         path: localPath,
                         glowCenter: origin - opticalBounds.topLeft,
                         press: _motion.press,
@@ -312,29 +313,33 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                                 ),
                               ),
                             ),
-                            if (isExpanded ||
-                                _motion.state != GlassInteractionState.idle)
-                              Positioned.fromRect(
-                                rect: geometry.expandedRect.shift(
-                                  -opticalBounds.topLeft,
-                                ),
-                                child: IgnorePointer(
-                                  ignoring: morph < 0.82,
-                                  child: ExcludeSemantics(
-                                    excluding: morph < 0.82,
-                                    child: soften(
-                                      AdaptiveGlassEffects(
-                                        opacity:
-                                            expandedOpacity * transitionOpacity,
-                                        child: Transform.translate(
-                                          offset: contentOffset,
-                                          child: widget.expandedChild,
-                                        ),
+                            // Retained while collapsed, matching the search
+                            // morph: at expandedOpacity 0 nothing paints (an
+                            // adaptive glyph submits no backdrop pass), so the
+                            // only cost is one idle layout — bought back by
+                            // rasterizing every glyph mask before the tap
+                            // instead of on the first open frame.
+                            Positioned.fromRect(
+                              rect: geometry.expandedRect.shift(
+                                -opticalBounds.topLeft,
+                              ),
+                              child: IgnorePointer(
+                                ignoring: morph < 0.82,
+                                child: ExcludeSemantics(
+                                  excluding: morph < 0.82,
+                                  child: soften(
+                                    AdaptiveGlassEffects(
+                                      opacity:
+                                          expandedOpacity * transitionOpacity,
+                                      child: Transform.translate(
+                                        offset: contentOffset,
+                                        child: widget.expandedChild,
                                       ),
                                     ),
                                   ),
                                 ),
                               ),
+                            ),
                           ],
                         ),
                       ),

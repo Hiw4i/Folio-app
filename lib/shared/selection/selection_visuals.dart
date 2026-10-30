@@ -12,8 +12,8 @@ const double folioSelectionCornerRadius = 6;
 /// Office's DOM ranges use the same tighter geometry and mirror this token.
 const double folioPdfSelectionCornerRadius = 2;
 
-// Material TextMagnifier is the MD reference. Native Office consumes these
-// logical-pixel values through its platform-view creation parameters too.
+// Material TextMagnifier is the MD reference. Office's Flutter loupe and the
+// PDF lens share these logical-pixel values.
 const Size folioSelectionMagnifierSize = Magnifier.kDefaultMagnifierSize;
 const double folioSelectionMagnifierCornerRadius = 40;
 const double folioSelectionMagnifierZoom = 1.25;

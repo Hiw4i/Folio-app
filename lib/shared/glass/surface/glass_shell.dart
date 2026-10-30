@@ -15,6 +15,7 @@ class GlassShell extends StatelessWidget {
     required this.focused,
     this.blurSigma,
     this.fill,
+    this.shareBackdrop = true,
     super.key,
   });
 
@@ -32,6 +33,10 @@ class GlassShell extends StatelessWidget {
   /// glass tint; panels/sheets pass their own opaque surface color.
   final Color? fill;
 
+  /// Only disjoint surfaces may reuse the group's pre-surface backdrop.
+  /// Expanding menus can overlap earlier controls and need their current paint.
+  final bool shareBackdrop;
+
   static ui.ImageFilter get backdropBlur => LiquidBlur.filter;
 
   @override
@@ -48,6 +53,14 @@ class GlassShell extends StatelessWidget {
     } else {
       sigma = motionSigma < transitionSigma ? motionSigma : transitionSigma;
     }
+    final filter = !blurEnabled || sigma == null
+        ? backdropBlur
+        : LiquidBlur.filterFor(sigma);
+    // A different animated sigma prevents the engine from sharing the group's
+    // filtered result. Keep resting siblings batched while this surface moves.
+    final groupKey = shareBackdrop && identical(filter, backdropBlur)
+        ? BackdropGroup.of(context)?.backdropKey
+        : null;
     return RepaintBoundary(
       child: CustomPaint(
         painter: blurEnabled
@@ -58,11 +71,10 @@ class GlassShell extends StatelessWidget {
           children: <Widget>[
             ClipPath(
               clipper: _ShellClipper(path),
-              child: BackdropFilter.grouped(
+              child: BackdropFilter(
+                backdropGroupKey: groupKey,
                 enabled: blurEnabled,
-                filter: !blurEnabled || sigma == null
-                    ? backdropBlur
-                    : LiquidBlur.filterFor(sigma),
+                filter: filter,
                 child: CustomPaint(
                   painter: const _CoveragePainter(),
                   child: const SizedBox.expand(),
@@ -199,9 +211,7 @@ class _ShellPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final Paint fillPaint;
     if (blurEnabled) {
-      fillPaint = fill == null
-          ? _fillPaint
-          : (Paint()..color = fill!);
+      fillPaint = fill == null ? _fillPaint : (Paint()..color = fill!);
     } else {
       fillPaint = _opaqueFillPaint;
     }

@@ -7,7 +7,6 @@ import 'package:flutter/widgets.dart';
 
 import '../../settings/folio_settings_scope.dart';
 import 'adaptive_glass_effects.dart';
-import 'liquid_content.dart';
 
 export 'adaptive_glass_effects.dart';
 
@@ -79,9 +78,8 @@ class _RenderAdaptiveGlassGroup extends RenderProxyBox {
   Offset get globalSamplePoint =>
       localToGlobal(_samplePoint ?? (Offset.zero & size).center);
 
-  // Deliberately not a repaint boundary: changes to a parent Transform or
-  // Stack position repaint the glyphs. They refresh coordinates in paint,
-  // without an O(subtree) invalidation walk on every motion tick.
+  // Coordinates are refreshed by the foreground layer at composition time.
+  // An ancestor may retain this subtree while moving its RepaintBoundary.
 }
 
 /// An icon whose black/white foreground is computed by the GPU from the
@@ -440,12 +438,8 @@ class _RenderAdaptiveBackdrop extends RenderProxyBox {
   ui.ImageFilter? _filter;
   Rect _filterBounds = Rect.zero;
   bool _filterCreationFailed = false;
-  final LayerHandle<BackdropFilterLayer> _backdropLayer =
-      LayerHandle<BackdropFilterLayer>();
-  final LayerHandle<ClipRectLayer> _clipLayer = LayerHandle<ClipRectLayer>();
-
-  static final Paint _coveragePaint = Paint()
-    ..color = const Color.fromARGB(1, 0, 0, 0);
+  final LayerHandle<_AdaptiveForegroundLayer> _backdropLayer =
+      LayerHandle<_AdaptiveForegroundLayer>();
 
   set program(ui.FragmentProgram value) {
     if (identical(value, _program)) return;
@@ -529,14 +523,17 @@ class _RenderAdaptiveBackdrop extends RenderProxyBox {
         );
     final blurSigma = (_effects.blurSigma * 10).roundToDouble() / 10;
     final uniforms = <double>[
-      origin.dx, origin.dy,
-      yAxis.dy / determinant, -yAxis.dx / determinant,
-      -xAxis.dy / determinant, xAxis.dx / determinant,
-      sample.dx, sample.dy,
+      origin.dx,
+      origin.dy,
+      yAxis.dy / determinant,
+      -yAxis.dx / determinant,
+      -xAxis.dy / determinant,
+      xAxis.dx / determinant,
+      sample.dx,
+      sample.dy,
       _effects.opacity,
-      // Used for equality below; the actual blur is a native Gaussian applied
-      // after the shader, not an approximation over the sampled backdrop.
-      blurSigma,
+      blurSigma / size.width,
+      blurSigma / size.height,
     ];
     if (listEquals(uniforms, _lastUniforms)) {
       return _filter != null;
@@ -546,21 +543,14 @@ class _RenderAdaptiveBackdrop extends RenderProxyBox {
       // Reuse the native shader and layers. ImageFilter takes a uniform
       // snapshot, so create that lightweight filter only when values change.
       final shader = _shader ??= _createShader();
-      for (var index = 0; index < uniforms.length - 1; index++) {
+      for (var index = 0; index < uniforms.length; index++) {
         shader.setFloat(index + 2, uniforms[index]);
       }
       if (!identical(_boundMask, _mask)) {
         shader.setImageSampler(1, _mask, filterQuality: FilterQuality.low);
         _boundMask = _mask;
       }
-      ui.ImageFilter filter = ui.ImageFilter.shader(shader);
-      if (blurSigma > 0) {
-        filter = ui.ImageFilter.compose(
-          outer: LiquidContent.softeningFilterFor(blurSigma),
-          inner: filter,
-        );
-      }
-      _filter = filter;
+      _filter = ui.ImageFilter.shader(shader);
       _lastUniforms = uniforms;
       return true;
     } on Object catch (error) {
@@ -593,48 +583,87 @@ class _RenderAdaptiveBackdrop extends RenderProxyBox {
     if (_effects.opacity <= 0) {
       // Hidden glyphs keep their mask/state but submit no backdrop pass.
       _backdropLayer.layer = null;
-      _clipLayer.layer = null;
       return;
     }
     if (!_ensureFilter()) {
       _backdropLayer.layer = null;
-      _clipLayer.layer = null;
       super.paint(context, offset);
       return;
     }
-    _clipLayer.layer = context.pushClipRect(
-      needsCompositing,
+    final backdrop = _backdropLayer.layer ??= _AdaptiveForegroundLayer(this);
+    backdrop.paintOffset = offset;
+    context.pushLayer(
+      backdrop,
+      (context, offset) {},
       offset,
-      _filterBounds,
-      (context, offset) {
-        final backdrop = _backdropLayer.layer ??= BackdropFilterLayer();
-        backdrop
-          ..filter = _filter
-          ..blendMode = BlendMode.srcOver;
-        context.pushLayer(
-          backdrop,
-          (context, offset) {
-            final bounds = _filterBounds.shift(offset);
-            context.canvas.drawPoints(ui.PointMode.points, <Offset>[
-              bounds.topLeft,
-              bounds.topRight,
-              bounds.bottomLeft,
-              bounds.bottomRight,
-            ], _coveragePaint);
-          },
-          offset,
-          childPaintBounds: _filterBounds.shift(offset),
-        );
-      },
-      oldLayer: _clipLayer.layer,
+      childPaintBounds: _filterBounds.shift(offset),
     );
   }
 
   @override
   void dispose() {
     _backdropLayer.layer = null;
-    _clipLayer.layer = null;
     _shader?.dispose();
+    super.dispose();
+  }
+}
+
+/// Refresh only scene-dependent uniforms, even when Flutter retains the
+/// render subtree beneath a moving ancestor. No layout, glyph rasterization,
+/// post-frame callback or subtree invalidation is needed for this update.
+class _AdaptiveForegroundLayer extends ContainerLayer {
+  _AdaptiveForegroundLayer(this.renderObject);
+
+  final _RenderAdaptiveBackdrop renderObject;
+  Offset paintOffset = Offset.zero;
+  ui.BackdropFilterEngineLayer? _filterLayer;
+  ui.Picture? _coverage;
+  Rect? _coverageBounds;
+  static final Paint _coveragePaint = Paint()
+    ..color = const Color.fromARGB(1, 0, 0, 0);
+
+  @override
+  bool get alwaysNeedsAddToScene => true;
+
+  @override
+  void addToScene(ui.SceneBuilder builder) {
+    if (!renderObject.attached || !renderObject._ensureFilter()) return;
+    engineLayer = builder.pushClipRect(
+      renderObject._filterBounds.shift(paintOffset),
+      oldLayer: engineLayer as ui.ClipRectEngineLayer?,
+    );
+    final previous = _filterLayer;
+    _filterLayer = builder.pushBackdropFilter(
+      renderObject._filter!,
+      oldLayer: previous,
+    );
+    previous?.dispose();
+    final bounds = renderObject._filterBounds;
+    if (bounds != _coverageBounds) {
+      // The shared sample can move independently of a retained glyph. Keep
+      // input coverage current as well as its shader uniforms and output clip.
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawPoints(ui.PointMode.points, <Offset>[
+        bounds.topLeft,
+        bounds.topRight,
+        bounds.bottomLeft,
+        bounds.bottomRight,
+      ], _coveragePaint);
+      _coverage?.dispose();
+      _coverage = recorder.endRecording();
+      _coverageBounds = bounds;
+    }
+    builder.addPicture(paintOffset, _coverage!);
+    builder.pop();
+    builder.pop();
+  }
+
+  @override
+  void dispose() {
+    _filterLayer?.dispose();
+    _filterLayer = null;
+    _coverage?.dispose();
+    _coverage = null;
     super.dispose();
   }
 }
@@ -960,7 +989,9 @@ class _OutlinedText extends StatelessWidget {
       textScaler: textScaler,
       style: style.copyWith(
         color: const Color(0xFFFFFFFF),
-        shadows: const <Shadow>[],
+        shadows: FolioSettingsScope.blurEnabledOf(context)
+            ? kAdaptiveOutlineShadows
+            : const <Shadow>[],
       ),
     );
   }

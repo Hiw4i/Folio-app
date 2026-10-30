@@ -81,7 +81,15 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(primaryActions, 1);
-    expect(find.text('Menu content'), findsNothing);
+    // The expanded content stays mounted but invisible while collapsed: its
+    // glyph masks are pre-rasterized off the open animation's first frame.
+    expect(find.text('Menu content'), findsOneWidget);
+    expect(
+      AdaptiveGlassEffects.of(
+        tester.element(find.text('Menu content')),
+      ).opacity,
+      0,
+    );
 
     await tester.longPress(hit);
     await tester.pumpAndSettle();

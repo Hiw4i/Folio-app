@@ -5,6 +5,9 @@ import 'package:flutter/foundation.dart';
 @immutable
 class FolioSettings {
   const FolioSettings({
+    // Off for new users: plain fixed-contrast foregrounds, no backdrop cost.
+    // Turning blur on also enables the adaptive black/white glyph foreground,
+    // which samples the backdrop behind glass controls on the GPU.
     this.blurEnabled = false,
     this.liquidMotionEnabled = true,
     this.showNavigationOnScrollUp = true,

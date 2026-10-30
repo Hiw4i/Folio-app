@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Execute the production GLSL in Mesa EGL (not a Flutter/Android test).
 
-Uses only Python's standard library and Linux EGL/GL libraries. Both engine
-texture-orientation branches are exercised. Flutter's runtime-effect include
+Uses Python's standard library with Mesa EGL on Linux or Android SDK's bundled
+ANGLE on Windows (override its directory with FOLIO_EGL_DIRECTORY). Both engine
+target-define configurations are compiled; actual snapshot orientation is also
+covered by the on-device Flutter regression. Flutter's runtime-effect include
 is replaced only by the equivalent pixel-coordinate function for this harness.
 Run from project root: python3 tools/adaptive_glass/check_shader.py
 """
 from __future__ import annotations
 
 import ctypes as C
+import os
 from pathlib import Path
 import unittest
 
@@ -18,12 +21,25 @@ W = H = 96
 
 class GPU:
     def __init__(self) -> None:
-        self.egl = C.CDLL('libEGL.so.1')
+        if os.name == 'nt':
+            sdk = Path(os.environ.get('ANDROID_HOME') or os.environ.get('ANDROID_SDK_ROOT')
+                       or str(Path(os.environ['LOCALAPPDATA']) / 'Android/Sdk'))
+            directory = Path(os.environ.get('FOLIO_EGL_DIRECTORY')
+                             or sdk / 'emulator/lib64/gles_angle')
+            self._dll_directory = os.add_dll_directory(str(directory))
+            self.egl = C.CDLL(str(directory / 'libEGL.dll'))
+        else:
+            self.egl = C.CDLL('libEGL.so.1')
         self.egl.eglGetProcAddress.argtypes = [C.c_char_p]
         self.egl.eglGetProcAddress.restype = C.c_void_p
         get_display = C.CFUNCTYPE(C.c_void_p, C.c_uint, C.c_void_p, C.POINTER(C.c_int))(
             self.egl.eglGetProcAddress(b'eglGetPlatformDisplayEXT'))
-        self.display = get_display(0x31DD, None, None)
+        if os.name == 'nt':
+            self.egl.eglGetDisplay.argtypes = [C.c_void_p]
+            self.egl.eglGetDisplay.restype = C.c_void_p
+            self.display = self.egl.eglGetDisplay(None)
+        else:
+            self.display = get_display(0x31DD, None, None)
         self.e('eglInitialize', C.c_uint, [C.c_void_p, C.c_void_p, C.c_void_p])
         self.e('eglBindAPI', C.c_uint, [C.c_uint])
         self.e('eglChooseConfig', C.c_uint, [C.c_void_p, C.c_void_p, C.c_void_p, C.c_int, C.c_void_p])
@@ -100,6 +116,10 @@ class GPU:
         setattr(self, name, C.CFUNCTYPE(restype, *args)(ptr))
 
     def shader(self, kind, source):
+        # The effect uses only GLES 3.0 language features. ANGLE's bundled
+        # Windows build supports that version, whereas Mesa accepts 3.2 too.
+        if os.name == 'nt':
+            source = source.replace('#version 320 es', '#version 300 es')
         obj = self.glCreateShader(kind)
         text = C.c_char_p(source.encode())
         self.glShaderSource(obj, 1, C.byref(text), None)
@@ -137,13 +157,13 @@ class GPU:
 
     def render(self, background, *, flipped=False, sample=(48, 10),
                origin=(24, 24), x_axis=(32, 0), y_axis=(0, 24),
-               opacity=1.0, mask_alpha=255):
+               opacity=1.0, mask_alpha=255, sigma=0.0):
         p = self.programs[flipped]
         self.glUseProgram(p)
         textures = (C.c_uint * 2)()
         self.glGenTextures(2, textures)
         backdrop = bytes(component for y in range(H) for x in range(W)
-                         for component in background(x, H - 1 - y if flipped else y))
+                         for component in background(x, y))
         mask = bytes([255, 255, 255, mask_alpha]) * 16
         try:
             for index, (data, width, height) in enumerate(((backdrop, W, H), (mask, 4, 4))):
@@ -161,6 +181,7 @@ class GPU:
                 'u_mask_inverse_x': (y_axis[1] / det, -y_axis[0] / det),
                 'u_mask_inverse_y': (-x_axis[1] / det, x_axis[0] / det),
                 'u_sample_point': sample,
+                'u_mask_blur_uv': (sigma / 32, sigma / 24),
             }.items():
                 self.glUniform2f(loc(name), *value)
             self.glUniform1f(loc('u_opacity'), opacity)
@@ -214,7 +235,7 @@ class ShaderTests(unittest.TestCase):
                 self.assertEqual(p[2], p[3])
                 self.assertAlmostEqual(p[3], round(opacity * 255), delta=1)
 
-    def test_gles_only_flips_backdrop_texture(self):
+    def test_gles_uses_the_same_runtime_snapshot_coordinates(self):
         background = lambda x, y: (255, 255, 255, 255) if y < 25 else (0, 0, 0, 255)
         for sample in ((50, 10), (50, 80)):
             normal = self.gpu.render(background, sample=sample)
@@ -243,6 +264,18 @@ class ShaderTests(unittest.TestCase):
     def test_zero_opacity_has_no_output(self):
         out = self.gpu.render(lambda x, y: (255, 255, 255, 255), opacity=0)
         self.assertFalse(any(out))
+
+    def test_blur_has_transparent_halo_without_smearing_mask_edges(self):
+        background = lambda x, y: (255, 255, 255, 255)
+        for flipped in (False, True):
+            sharp = self.gpu.render(background, flipped=flipped)
+            soft = self.gpu.render(background, flipped=flipped, sigma=1.6)
+            self.assertEqual(pixel(sharp, 23, 35)[3], 0)
+            self.assertGreater(pixel(soft, 23, 35)[3], 0)
+            self.assertLess(pixel(soft, 24, 35)[3], 255)
+            self.assertEqual(pixel(soft, 18, 35)[3], 0)
+            self.assertEqual(pixel(soft, 48, 10), (0, 0, 0, 0))
+            self.assertEqual(pixel(soft, 40, 35), (0, 0, 0, 255))
 
     def test_zero_mask_has_no_output(self):
         out = self.gpu.render(lambda x, y: (0, 0, 0, 255), mask_alpha=0)

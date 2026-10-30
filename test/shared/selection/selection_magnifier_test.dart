@@ -40,6 +40,9 @@ void main() {
       BorderRadius.circular(folioSelectionMagnifierCornerRadius),
     );
     await tester.pumpWidget(const SizedBox.shrink());
+    // Reset inside the body: the binding's foundation-variable invariant runs
+    // before tearDowns and would otherwise fail every run of this file.
+    debugDefaultTargetPlatformOverride = null;
   });
 
   testWidgets('PDF lens uses the native MD Material capsule and tint', (
