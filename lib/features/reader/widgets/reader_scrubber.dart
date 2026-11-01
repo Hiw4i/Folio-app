@@ -3,22 +3,20 @@ import 'dart:math' as math;
 
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
-import 'package:scroll_to_index/scroll_to_index.dart';
 
 import '../../../shared/glass/liquid_glass.dart';
 import '../../../shared/theme/folio_theme.dart';
-import '../logic/document_renderer.dart';
-import '../logic/reader_state.dart';
+import '../logic/reader_navigation.dart';
+import '../logic/reader_scrub_controller.dart';
 
 /// Custom fast-scroll strip for md/txt/docx/pdf.
 ///
 /// A small knob on the right edge marks the file position. Only the knob
 /// itself is interactive: dragging it scrubs the document super fast
-/// (the rest of the edge lets all touches pass through to the document):
-/// - md/txt — direct [AutoScrollController.jumpTo], no animation;
-/// - pdf — [PdfDocumentRenderer.seekToFraction] straight to the document
-///   offset with [Duration.zero];
-/// - docx — [OfficeDocumentRendererBase.seekToFraction] page jump.
+/// (the rest of the edge lets all touches pass through to the document).
+/// The format is unknown here: everything — visibility, live position,
+/// labels and seek dispatching — comes from the [ReaderNavigation] contract
+/// and its [ReaderScrubController] gesture state.
 ///
 /// The liquid-glass pill with `%` / `N / M` inside (the same 62x38 look as
 /// the bottom-left indicator, which stays untouched) is a pure readout: it
@@ -27,16 +25,9 @@ import '../logic/reader_state.dart';
 ///
 /// Short files (up to ~2 pages/screens) show nothing at all.
 class ReaderScrubber extends StatefulWidget {
-  const ReaderScrubber({
-    required this.renderer,
-    required this.scrollController,
-    required this.progressPercent,
-    super.key,
-  });
+  const ReaderScrubber({required this.navigation, super.key});
 
-  final DocumentRenderer renderer;
-  final AutoScrollController scrollController;
-  final ValueNotifier<int> progressPercent;
+  final ReaderNavigation navigation;
 
   @override
   State<ReaderScrubber> createState() => _ReaderScrubberState();
@@ -53,85 +44,52 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
   /// everything else on the edge passes touches through to the document.
   static const double _grabHalo = 14;
 
-  bool _scrubbing = false;
-
-  /// Finger fraction during scrub. A [ValueNotifier] so 120Hz drag updates
-  /// repaint only the knob/pill (via [ValueListenableBuilder]) instead of
-  /// `setState`-ing the whole strip on every pixel.
-  final ValueNotifier<double> _scrubFraction = ValueNotifier<double>(0);
+  late ReaderScrubController _controller;
+  ReaderNavigation? _listenedNavigation;
 
   /// Knob travel (px) from the last layout. Layout cache only: written
   /// during build without `setState`, read by the next drag update so the
   /// knob follows the finger strictly 1:1 with no snap-to-finger teleport.
   double _travelCache = 0;
 
-  /// Frame-coalesced document seek: drag events only store [_pendingSeek],
-  /// the actual `jumpTo/goToPosition` runs at most once per frame.
-  bool _seekFrameScheduled = false;
-  double _pendingSeek = 0;
-  bool _hasPendingSeek = false;
-
-  /// Heavy seeks (PDF rasterization, Office platform channel) are additionally
-  /// throttled: at most one every [_heavySeekInterval], plus a trailing seek
-  /// on release so the document always lands exactly under the finger.
-  static const Duration _heavySeekInterval = Duration(milliseconds: 80);
-  DateTime _lastHeavySeek = DateTime.fromMillisecondsSinceEpoch(0);
-  Timer? _heavyTimer;
-  double? _trailingHeavySeek;
-
   /// External progress (scroll fling, page change) coalesced to one rebuild
   /// per frame instead of one `setState` per notify storm tick.
   bool _externalFrameScheduled = false;
 
-  bool get _isText => widget.renderer is TextDocumentRenderer;
-  bool get _isPdf => widget.renderer is PdfDocumentRenderer;
-  bool get _isWord => widget.renderer is WordDocumentRenderer;
-  bool get _supported => _isText || _isPdf || _isWord;
-
-  PdfDocumentRenderer? get _pdf =>
-      widget.renderer is PdfDocumentRenderer
-          ? widget.renderer as PdfDocumentRenderer
-          : null;
-
   @override
   void initState() {
     super.initState();
-    widget.renderer.addListener(_handleExternalProgress);
-    widget.progressPercent.addListener(_handleExternalProgress);
-    _pdf?.scrollFraction.addListener(_handleExternalProgress);
+    _attach(widget.navigation);
   }
 
   @override
   void didUpdateWidget(ReaderScrubber oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.renderer, widget.renderer)) {
-      oldWidget.renderer.removeListener(_handleExternalProgress);
-      final oldPdf = oldWidget.renderer is PdfDocumentRenderer
-          ? oldWidget.renderer as PdfDocumentRenderer
-          : null;
-      oldPdf?.scrollFraction.removeListener(_handleExternalProgress);
-      widget.renderer.addListener(_handleExternalProgress);
-      _pdf?.scrollFraction.addListener(_handleExternalProgress);
-      _scrubbing = false;
-      _hasPendingSeek = false;
-      _seekFrameScheduled = false;
-      _trailingHeavySeek = null;
-      _heavyTimer?.cancel();
-      _heavyTimer = null;
+    if (!identical(oldWidget.navigation, widget.navigation)) {
+      _attach(widget.navigation);
     }
-    if (!identical(oldWidget.progressPercent, widget.progressPercent)) {
-      oldWidget.progressPercent.removeListener(_handleExternalProgress);
-      widget.progressPercent.addListener(_handleExternalProgress);
+  }
+
+  void _attach(ReaderNavigation navigation) {
+    final previous = _listenedNavigation;
+    if (previous != null) {
+      previous.removeListener(_handleExternalProgress);
+      _controller
+        ..removeListener(_handleScrubStateChanged)
+        ..dispose();
     }
+    _listenedNavigation = navigation;
+    _controller =
+        ReaderScrubController(navigation)..addListener(_handleScrubStateChanged);
+    navigation.addListener(_handleExternalProgress);
   }
 
   @override
   void dispose() {
-    _heavyTimer?.cancel();
-    _scrubFraction.dispose();
-    widget.renderer.removeListener(_handleExternalProgress);
-    widget.progressPercent.removeListener(_handleExternalProgress);
-    _pdf?.scrollFraction.removeListener(_handleExternalProgress);
+    _listenedNavigation?.removeListener(_handleExternalProgress);
+    _controller
+      ..removeListener(_handleScrubStateChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -140,9 +98,9 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
   /// duplicates the bottom-left indicator outside scrubbing.
   ///
   /// Coalesced to one rebuild per frame: flings/page-changes can fire
-  /// several notifies per frame (renderer + progress + scrollFraction).
+  /// several notifies per frame.
   void _handleExternalProgress() {
-    if (!mounted || _scrubbing || !_supported) {
+    if (!mounted || _controller.isScrubbing) {
       return;
     }
     if (_externalFrameScheduled) {
@@ -151,258 +109,42 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
     _externalFrameScheduled = true;
     SchedulerBinding.instance.scheduleFrameCallback((_) {
       _externalFrameScheduled = false;
-      if (mounted && !_scrubbing) {
+      if (mounted && !_controller.isScrubbing) {
         setState(() {});
       }
     });
   }
 
-  bool _isReady() {
-    final renderer = widget.renderer;
-    if (renderer is PdfDocumentRenderer) {
-      return renderer.loadState == ReaderLoadState.ready ||
-          renderer.sourceReady;
-    }
-    if (renderer is OfficeDocumentRendererBase) {
-      return renderer.loadState == ReaderLoadState.ready ||
-          renderer.sourceReady;
-    }
-    if (renderer is TextDocumentRenderer) {
-      return renderer.loadState == ReaderLoadState.ready;
-    }
-    return false;
-  }
-
-  /// Short files (up to ~2 pages/screens) get no scrubber at all.
-  bool _isLongEnough() {
-    final renderer = widget.renderer;
-    if (renderer is TextDocumentRenderer) {
-      final controller = widget.scrollController;
-      if (!controller.hasClients) {
-        return false;
-      }
-      final position = controller.position;
-      if (!position.viewportDimension.isFinite ||
-          position.viewportDimension <= 0 ||
-          !position.maxScrollExtent.isFinite) {
-        return false;
-      }
-      return position.maxScrollExtent > position.viewportDimension;
-    }
-    if (renderer is PdfDocumentRenderer) {
-      return renderer.pageCount > 2;
-    }
-    if (renderer is OfficeDocumentRendererBase) {
-      return renderer.positionCount > 2;
-    }
-    return false;
-  }
-
-  double _liveFraction() {
-    final renderer = widget.renderer;
-    if (renderer is TextDocumentRenderer) {
-      final controller = widget.scrollController;
-      if (!controller.hasClients) {
-        return 0;
-      }
-      final position = controller.position;
-      final max = position.maxScrollExtent;
-      if (max <= 0) {
-        return 0;
-      }
-      return (position.pixels / max).clamp(0.0, 1.0);
-    }
-    if (renderer is PdfDocumentRenderer) {
-      final smooth = renderer.scrollFraction.value;
-      if (smooth.isFinite && smooth > 0) {
-        return smooth.clamp(0.0, 1.0);
-      }
-      return renderer.pageFraction;
-    }
-    if (renderer is OfficeDocumentRendererBase) {
-      return renderer.pageFraction;
-    }
-    return 0;
-  }
-
-  /// Same text as the bottom-left progress pill for the live position.
-  String _liveLabel() {
-    final renderer = widget.renderer;
-    if (renderer is TextDocumentRenderer) {
-      return '${widget.progressPercent.value}%';
-    }
-    if (renderer is PdfDocumentRenderer) {
-      return renderer.positionLabel;
-    }
-    if (renderer is OfficeDocumentRendererBase) {
-      return renderer.positionLabel;
-    }
-    return '';
-  }
-
-  /// Projected label for the finger position while scrubbing, so feedback
-  /// is instant even before the renderer reports the new position.
-  String _scrubLabel(double fraction) {
-    final renderer = widget.renderer;
-    final clamped = fraction.clamp(0.0, 1.0);
-    if (renderer is TextDocumentRenderer) {
-      return '${(clamped * 100).round()}%';
-    }
-    if (renderer is PdfDocumentRenderer) {
-      if (renderer.pageCount <= 0) {
-        return 'PDF';
-      }
-      final page = (1 + (clamped * (renderer.pageCount - 1)).round()).clamp(
-        1,
-        renderer.pageCount,
-      );
-      return '$page / ${renderer.pageCount}';
-    }
-    if (renderer is OfficeDocumentRendererBase) {
-      if (renderer.positionCount <= 0) {
-        return renderer.positionLabel;
-      }
-      final position =
-          (1 + (clamped * (renderer.positionCount - 1)).round()).clamp(
-            1,
-            renderer.positionCount,
-          );
-      return '$position / ${renderer.positionCount}';
-    }
-    return '';
-  }
-
-  bool get _isHeavy => _isPdf || _isWord;
-
-  Future<void> _seek(double fraction) async {
-    final renderer = widget.renderer;
-    final target = fraction.clamp(0.0, 1.0);
-    if (renderer is TextDocumentRenderer) {
-      final controller = widget.scrollController;
-      if (!controller.hasClients) {
-        return;
-      }
-      final position = controller.position;
-      controller.jumpTo(
-        (target * position.maxScrollExtent)
-            .clamp(position.minScrollExtent, position.maxScrollExtent)
-            .toDouble(),
-      );
-    } else if (renderer is PdfDocumentRenderer) {
-      await renderer.seekToFraction(target);
-    } else if (renderer is OfficeDocumentRendererBase) {
-      await renderer.seekToFraction(target);
+  void _handleScrubStateChanged() {
+    if (mounted) {
+      setState(() {});
     }
   }
 
-  void _scheduleSeek(double fraction) {
-    _pendingSeek = fraction.clamp(0.0, 1.0);
-    _hasPendingSeek = true;
-    if (_seekFrameScheduled) {
-      return;
-    }
-    _seekFrameScheduled = true;
-    SchedulerBinding.instance.scheduleFrameCallback((_) {
-      _seekFrameScheduled = false;
-      _flushSeek();
-    });
-  }
-
-  void _flushSeek() {
-    if (!_hasPendingSeek || !mounted) {
-      return;
-    }
-    final target = _pendingSeek;
-    _hasPendingSeek = false;
-    if (_isHeavy) {
-      final now = DateTime.now();
-      if (now.difference(_lastHeavySeek) < _heavySeekInterval) {
-        // Too soon after the previous raster/channel jump: remember the
-        // latest finger position and deliver it on the throttle boundary.
-        // The knob itself already follows the finger at 120Hz via
-        // `_scrubFraction`, so this throttling is invisible.
-        _trailingHeavySeek = target;
-        _heavyTimer?.cancel();
-        final wait =
-            _heavySeekInterval - now.difference(_lastHeavySeek);
-        _heavyTimer = Timer(wait, () {
-          final trailing = _trailingHeavySeek;
-          _trailingHeavySeek = null;
-          if (trailing == null || !mounted) {
-            return;
-          }
-          _lastHeavySeek = DateTime.now();
-          unawaited(_seek(trailing));
-        });
-        return;
-      }
-      _lastHeavySeek = now;
-    }
-    unawaited(_seek(target));
-  }
-
-  void _beginScrub(double fraction) {
-    if (_scrubbing) {
-      return;
-    }
-    final start = fraction.clamp(0.0, 1.0);
-    _scrubFraction.value = start;
-    _lastHeavySeek = DateTime.fromMillisecondsSinceEpoch(0);
-    _trailingHeavySeek = null;
-    _heavyTimer?.cancel();
-    _heavyTimer = null;
-    setState(() => _scrubbing = true);
-    // First jump is immediate so the document starts moving with the finger.
-    if (_isHeavy) {
-      _lastHeavySeek = DateTime.now();
-    }
-    unawaited(_seek(start));
-  }
-
-  void _updateScrub(double fraction) {
-    final target = fraction.clamp(0.0, 1.0);
-    // No setState here: only the knob/pill listen to `_scrubFraction`.
-    _scrubFraction.value = target;
-    _scheduleSeek(target);
-  }
-
-  void _endScrub() {
-    if (!_scrubbing) {
-      return;
-    }
-    _heavyTimer?.cancel();
-    _heavyTimer = null;
-    // Exact landing: deliver the very latest finger position synchronously.
-    final trailing = _trailingHeavySeek;
-    _trailingHeavySeek = null;
-    if (_hasPendingSeek || trailing != null) {
-      final target = trailing ?? _pendingSeek;
-      _hasPendingSeek = false;
-      _lastHeavySeek = DateTime.now();
-      unawaited(_seek(target));
-    }
-    setState(() => _scrubbing = false);
-  }
+  double get _liveFraction => widget.navigation.snapshot.confirmedFraction ?? 0;
 
   void _dragStart() {
     // Engage at the current position: no teleport, the knob stays exactly
     // where the finger caught it.
-    _beginScrub(_scrubbing ? _scrubFraction.value : _liveFraction());
+    _controller.begin(
+      _controller.isScrubbing ? _controller.preview.value : _liveFraction,
+    );
   }
 
   void _dragUpdate(double dy) {
     if (_travelCache <= 0) {
       return;
     }
-    if (!_scrubbing) {
+    if (!_controller.isScrubbing) {
       _dragStart();
     }
-    _updateScrub(_scrubFraction.value + dy / _travelCache);
+    _controller.update(_controller.preview.value + dy / _travelCache);
   }
 
   @override
   Widget build(BuildContext context) {
-    if (!_supported || !_isReady() || !_isLongEnough()) {
+    final snapshot = widget.navigation.snapshot;
+    if (!snapshot.showScrubber) {
       return const SizedBox.shrink();
     }
     return LayoutBuilder(
@@ -417,19 +159,20 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
         // Single stable wrapper across grab/release: the ValueListenableBuilder
         // element never remounts, so the knob's GestureDetector keeps tracking
         // the active pointer mid-gesture. Per-pixel motion rebuilds only this
-        // small Stack (knob+pill), never the ReaderScreen, and seeks run at
-        // most once per frame (heavy seeks throttled to 80ms + trailing).
+        // small Stack (knob+pill), never the ReaderScreen, and seeks are
+        // dispatched by the scrub controller (once per frame, spaced for
+        // heavy formats, exact landing on release).
         // NB: both slots stay keyed so inserting the pill never remounts the
         // knob's GestureDetector mid-gesture (that would drop the tracked
-        // pointer and stick `_scrubbing` on).
+        // pointer and stick the scrub state on).
         return ValueListenableBuilder<double>(
-          valueListenable: _scrubFraction,
-          builder: (context, scrubFrac, _) {
-            final scrubbing = _scrubbing;
-            final fraction = scrubbing ? scrubFrac : _liveFraction();
+          valueListenable: _controller.preview,
+          builder: (context, previewFraction, _) {
+            final scrubbing = _controller.isScrubbing;
+            final fraction = scrubbing ? previewFraction : _liveFraction;
             final label = scrubbing
-                ? _scrubLabel(scrubFrac)
-                : _liveLabel();
+                ? widget.navigation.labelForFraction(previewFraction)
+                : snapshot.positionLabel;
             final clamped = fraction.clamp(0.0, 1.0);
             final knobY = _edgeInset + clamped * travel;
             final pillY = (clamped * (height - _pillHeight))
@@ -482,6 +225,7 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
     required String label,
     required bool scrubbing,
   }) {
+    final basis = scrubbing ? _controller.preview.value : _liveFraction;
     return Positioned(
       key: const ValueKey<String>('reader_scrub_knob_slot'),
       right: 0,
@@ -492,29 +236,21 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
         slider: true,
         label: 'Document scroll slider',
         value: label,
-        increasedValue: _scrubLabel(
-          (scrubbing ? _scrubFraction.value : _liveFraction()) + 0.05,
-        ),
-        decreasedValue: _scrubLabel(
-          (scrubbing ? _scrubFraction.value : _liveFraction()) - 0.05,
-        ),
+        increasedValue: widget.navigation.labelForFraction(basis + 0.05),
+        decreasedValue: widget.navigation.labelForFraction(basis - 0.05),
         onIncrease: () => unawaited(
-          _seek(
-            (scrubbing ? _scrubFraction.value : _liveFraction()) + 0.05,
-          ),
+          widget.navigation.seekToFraction(basis + 0.05),
         ),
         onDecrease: () => unawaited(
-          _seek(
-            (scrubbing ? _scrubFraction.value : _liveFraction()) - 0.05,
-          ),
+          widget.navigation.seekToFraction(basis - 0.05),
         ),
         child: GestureDetector(
           key: const ValueKey<String>('reader_scrub_grip'),
           behavior: HitTestBehavior.translucent,
           onVerticalDragStart: (_) => _dragStart(),
           onVerticalDragUpdate: (details) => _dragUpdate(details.delta.dy),
-          onVerticalDragEnd: (_) => _endScrub(),
-          onVerticalDragCancel: _endScrub,
+          onVerticalDragEnd: (_) => _controller.end(),
+          onVerticalDragCancel: _controller.cancel,
           child: RepaintBoundary(
             child: Center(
               child: Container(

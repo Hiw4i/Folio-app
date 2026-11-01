@@ -94,6 +94,10 @@ abstract interface class ReaderNavigation implements Listenable {
   /// frame is on screen; confirmation arrives through [snapshot].
   Future<void> seekToFraction(double fraction);
 
+  /// Recomputes the snapshot from sources for lifecycle moments that produce
+  /// no source notification (a viewport attaching to its controller).
+  void revalidate();
+
   /// Removes the adapter's own subscriptions. Never closes the renderer.
   void dispose();
 }
@@ -121,6 +125,11 @@ abstract base class ReadingNavigationSource with ChangeNotifier {
       notifyListeners();
     }
   }
+
+  /// Public revalidation for lifecycle moments that produce no source
+  /// notification — a viewport attaching to its scroll controller changes
+  /// seekability without any listener callback firing.
+  void revalidate() => refresh();
 
   @protected
   ReaderNavigationSnapshot computeSnapshot();

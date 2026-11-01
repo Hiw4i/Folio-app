@@ -15,6 +15,7 @@ import '../../library/data/document_entry.dart';
 import '../data/document_content_source.dart';
 import '../logic/chrome_visibility.dart';
 import '../logic/document_renderer.dart';
+import '../logic/reader_navigation.dart';
 import '../logic/reader_state.dart';
 import '../logic/renderer_lifecycle.dart';
 import '../logic/title_truncation.dart';
@@ -23,6 +24,9 @@ import '../powerpoint/widgets/powerpoint_document_view.dart';
 import '../text/widgets/text_document_view.dart';
 import '../word/widgets/word_document_view.dart';
 import 'file_info_sheet.dart';
+import 'bindings/office_reader_navigation.dart';
+import 'bindings/pdf_reader_navigation.dart';
+import 'bindings/text_reader_navigation.dart';
 import 'reader_chrome.dart';
 import 'reader_menu_overlays.dart';
 import 'reader_search_navigator.dart';
@@ -87,6 +91,11 @@ class _ReaderScreenState extends State<ReaderScreen>
       GlobalKey<LiquidMorphingControlState>();
   GlobalKey _activeHitKey = GlobalKey();
   late final DocumentRenderer _renderer;
+
+  /// Transitional: the one navigation adapter for this screen, created once
+  /// with the existing text scroll/progress resources. Task 6 moves this
+  /// type choice into the reader binding factory.
+  late final ReaderNavigation _navigation;
   late final AnimationController _chromeController;
   late final CurvedAnimation _chromeProgress;
   final ValueNotifier<int> _progressPercent = ValueNotifier<int>(0);
@@ -129,8 +138,17 @@ class _ReaderScreenState extends State<ReaderScreen>
           document: widget.document,
           contentSource: widget.contentSource,
         );
+    _navigation = _createNavigation();
     _renderer.addListener(_rendererChanged);
     _scrollController.addListener(_scrollChanged);
+    // A text viewport attaching to its scroll controller produces no
+    // notification; revalidate after the first frame so the scrubber state
+    // reflects the attached viewport.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _navigation.revalidate();
+      }
+    });
     if (widget.initialRenderer != null) {
       // A primed renderer is already opening (or open): adopt it without
       // restarting its in-flight work, so I/O overlapped the open animation.
@@ -197,6 +215,15 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 
   void _rendererChanged() {
+    // The navigation snapshot must follow renderer transitions (a PDF
+    // attaching its viewer, Office posting ready) even when no scroll or
+    // progress source fires. Revalidated post-frame because the format view
+    // that attaches the viewport builds in response to this notification.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _navigation.revalidate();
+      }
+    });
     if (!mounted || _lastActiveHit == _renderer.activeHitIndex) {
       return;
     }
@@ -550,12 +577,33 @@ class _ReaderScreenState extends State<ReaderScreen>
     _recordChromeScroll(scrollDelta, canHide: true);
   }
 
+  /// The single navigation adapter for the active renderer. This type switch
+  /// is the screen's one temporary format decision; the binding factory
+  /// takes it over when the surfaces split off.
+  ReaderNavigation _createNavigation() {
+    final renderer = _renderer;
+    return switch (renderer) {
+      PdfDocumentRenderer() => PdfReaderNavigation(renderer),
+      OfficeDocumentRendererBase() => OfficeReaderNavigation(
+        renderer,
+        supportsScrubbing: renderer is! PowerPointDocumentRenderer,
+      ),
+      TextDocumentRenderer() => TextReaderNavigation(
+        renderer: renderer,
+        scrollController: _scrollController,
+        progressPercent: _progressPercent,
+      ),
+      _ => _StaticReaderNavigation(renderer.document),
+    };
+  }
+
   @override
   void dispose() {
     _searchDebounce?.cancel();
     _initialLoadDelay?.cancel();
     _revealGeneration += 1;
     _renderer.removeListener(_rendererChanged);
+    _navigation.dispose();
     releaseDocumentRenderer(_renderer);
     _scrollController
       ..removeListener(_scrollChanged)
@@ -640,23 +688,11 @@ class _ReaderScreenState extends State<ReaderScreen>
                       progress: _chromeProgress,
                       hiddenDy: ReaderChromeSpec.pillHiddenDy,
                       child: AnimatedBuilder(
-                        animation: _renderer,
+                        animation: _navigation,
                         builder: (context, child) {
-                          return ValueListenableBuilder<int>(
-                            valueListenable: _progressPercent,
-                            builder: (context, percent, _) {
-                              return ReaderProgressPill(
-                                key: const ValueKey<String>('reader_progress_glass'),
-                                label: _renderer is TextDocumentRenderer
-                                    ? '$percent%'
-                                    : _renderer is PdfDocumentRenderer
-                                    ? _renderer.positionLabel
-                                    : _renderer is OfficeDocumentRendererBase
-                                    ? _renderer.positionLabel
-                                    : widget.document.format.extension
-                                          .toUpperCase(),
-                              );
-                            },
+                          return ReaderProgressPill(
+                            key: const ValueKey<String>('reader_progress_glass'),
+                            label: _navigation.snapshot.positionLabel,
                           );
                         },
                       ),
@@ -671,11 +707,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                         media.viewPadding.bottom +
                         120,
                     width: 110,
-                    child: ReaderScrubber(
-                      renderer: _renderer,
-                      scrollController: _scrollController,
-                      progressPercent: _progressPercent,
-                    ),
+                    child: ReaderScrubber(navigation: _navigation),
                   ),
                   Positioned(
                     left: 0,
@@ -1188,4 +1220,37 @@ class _LiquidChromeObject extends StatelessWidget {
     // Зона захвата — дефолтные 8pt, как у меню: палец цепляется одинаково.
     return LiquidGlassControl(size: size, child: child);
   }
+}
+
+/// Transitional no-op navigation for renderers without a positional model.
+/// Task 6 replaces this with the binding factory's unsupported fallback.
+final class _StaticReaderNavigation implements ReaderNavigation {
+  _StaticReaderNavigation(this.document);
+
+  final DocumentEntry document;
+
+  @override
+  ReaderNavigationSnapshot get snapshot => ReaderNavigationSnapshot(
+    canSeek: false,
+    showScrubber: false,
+    positionLabel: document.format.extension.toUpperCase(),
+  );
+
+  @override
+  String labelForFraction(double fraction) => snapshot.positionLabel;
+
+  @override
+  Future<void> seekToFraction(double fraction) => Future<void>.value();
+
+  @override
+  void revalidate() {}
+
+  @override
+  void addListener(VoidCallback listener) {}
+
+  @override
+  void removeListener(VoidCallback listener) {}
+
+  @override
+  void dispose() {}
 }

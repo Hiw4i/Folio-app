@@ -5,11 +5,15 @@ import '../../../shared/glass/liquid_glass.dart';
 import '../../../shared/theme/folio_theme.dart';
 import '../../../shared/utils/text_measurer.dart';
 import '../logic/document_renderer.dart';
+import '../logic/reader_search_state.dart';
 
 /// Search hit navigation pill shown above the reader chrome while a query is
 /// active. Sizing around the label is measured up front because the liquid
 /// surface gives the shadow an oversized paint box; the Row must stay tight
 /// to the material dimensions or it drifts out of the pill.
+///
+/// All state comes from the renderer's [ReaderSearchSnapshot]: an unknown
+/// text layer or a failed search is never rendered as "No matches".
 class ReaderSearchNavigator extends StatelessWidget {
   const ReaderSearchNavigator({required this.renderer, super.key});
 
@@ -37,17 +41,23 @@ class ReaderSearchNavigator extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentRenderer = renderer;
-    final label = currentRenderer.isSearching
-        ? 'Searching…'
-        : currentRenderer is PdfDocumentRenderer &&
-              currentRenderer.hasNoSearchableText
-        ? 'No searchable text'
-        : currentRenderer is OfficeDocumentRendererBase &&
-              currentRenderer.hasNoSearchableText
-        ? 'No searchable text'
-        : currentRenderer.hitCount == 0
-        ? 'No matches'
-        : '${currentRenderer.activeHitIndex + 1} of ${currentRenderer.hitCount}';
+    final state = currentRenderer.searchState;
+    final label = switch (state.phase) {
+      // A query that has not reached a ready source yet must not read as a
+      // final result; it is still searching as far as the user can tell.
+      ReaderSearchPhase.searching ||
+      ReaderSearchPhase.waitingForSource => 'Searching…',
+      ReaderSearchPhase.failed => 'Search failed',
+      ReaderSearchPhase.idle => '',
+      ReaderSearchPhase.complete => switch (state.textAvailability) {
+        // No text layer at all is a different fact from zero hits.
+        ReaderTextAvailability.absent ||
+        ReaderTextAvailability.unsupported => 'No searchable text',
+        _ => state.hitCount == 0
+            ? 'No matches'
+            : '${state.activeHitIndex + 1} of ${state.hitCount}',
+      },
+    };
     final labelWidth = _labelMeasurer.widthOf(
       label,
       style: _labelStyle(context),
