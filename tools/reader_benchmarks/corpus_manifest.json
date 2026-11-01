@@ -1,0 +1,515 @@
+{
+  "version": 1,
+  "generatedBy": "tools/reader_benchmarks/generate_corpus.py",
+  "determinism": "zip-времена зафиксированы, PDF в invariant-режиме; повторный прогон воспроизводит SHA-256",
+  "deviceClasses": [
+    {
+      "role": "primary",
+      "model": "SM S938B (Galaxy S25 Ultra)",
+      "status": "подключено (Задача 1)"
+    },
+    {
+      "role": "lowResource",
+      "status": "не оценено: устройство недоступно, пробел зафиксирован"
+    }
+  ],
+  "referencePolicy": "сгенерированные файлы не объявляются эталоном только потому, что их создал тест; Office-эталоны ждут экспорта из приложения-источника (записать версию и шрифты экспорта)",
+  "files": [
+    {
+      "file": "test/fixtures/reader_corpus/docx_basic.docx",
+      "format": "docx",
+      "group": "content",
+      "sizeBytes": 38830,
+      "sha256": "12cdafc2b011a0ef8690a54a0e7d41e6dacafc4b2dd73629f8acd99694049b0b",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-01",
+          "Привет мир",
+          "Header – Колонтитул CORPUS-DOCX-01"
+        ]
+      },
+      "notes": "Базовый поток: заголовок, кириллица, фоновый цвет страницы, встроенное изображение, колонтитулы.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/docx_big_images.docx",
+      "format": "docx",
+      "group": "content",
+      "sizeBytes": 120533,
+      "sha256": "682181f00195c3dcf1ff4cb4ce94f3387c26f4f139f24e6a1f120120c4fc6b04",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-10"
+        ]
+      },
+      "notes": "Два больших JPEG 2400×1600: память и задержка первого открытия.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/docx_columns_sections.docx",
+      "format": "docx",
+      "group": "content",
+      "sizeBytes": 36883,
+      "sha256": "8bcc3e1c9529381de031b8f9e5d17ffeb388a4dab37a11bd492dcfbc6603f351",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-04",
+          "Continuous single-column section preserved"
+        ]
+      },
+      "notes": "Две колонки, затем непрерывная секция с одной колонкой.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/docx_headers_footnotes.docx",
+      "format": "docx",
+      "group": "content",
+      "sizeBytes": 39284,
+      "sha256": "84186d390f67c06702b1c14cc7d62d85e784d0c0c7b25e0877c101dc065073d9",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-01",
+          "CORPUS-DOCX-05 footnote"
+        ]
+      },
+      "notes": "Колонтитулы + сноска на первой странице; сноска добавлена поверх docx_basic.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/docx_images_float_inline.docx",
+      "format": "docx",
+      "group": "content",
+      "sizeBytes": 37347,
+      "sha256": "b81aa52cba4e8c816d789b13bf2f71be8715a151ba76d543879bbfb10f5a0218",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-07",
+          "Text after the inline image"
+        ]
+      },
+      "notes": "Встроенное изображение + привязанное плавающее изображение behindDoc с позиционированием от страницы.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/docx_lists.docx",
+      "format": "docx",
+      "group": "content",
+      "sizeBytes": 36700,
+      "sha256": "33e04baee19865295765755f165b1d1b5ca8739139e812d94e9a78a8eb2f32f3",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-06",
+          "Numbered item 1",
+          "Nested bullet 2.2"
+        ]
+      },
+      "notes": "Многоуровневые нумерованные и маркированные списки.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/docx_long_text.docx",
+      "format": "docx",
+      "group": "content",
+      "sizeBytes": 37222,
+      "sha256": "7b64f98f16cfe874753cc30528b1ee7b525a397226c18f163166fd83fbd5c052",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-02",
+          "Block-001",
+          "Block-140"
+        ]
+      },
+      "notes": "Длинный документ: непрерывность пагинации и порядок блоков 1..140.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/docx_missing_font.docx",
+      "format": "docx",
+      "group": "content",
+      "sizeBytes": 36741,
+      "sha256": "05542f6300695fffe5589dd39858082ea215e1f824a3cde52c6bc98a342383fc",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-09",
+          "No Such Font XYZ"
+        ]
+      },
+      "notes": "Запрос несуществующего шрифта: безопасный fallback, а не срыв вёрстки.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/docx_rtl_emoji.docx",
+      "format": "docx",
+      "group": "content",
+      "sizeBytes": 36830,
+      "sha256": "d2c57960b541c5457b1b7ff748a0dd09950ba5b73d4779f312da1c6ac0f9f5e6",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-08",
+          "مرحبا بالعالم"
+        ]
+      },
+      "notes": "RTL-абзацы (арабский, иврит) с w:bidi/w:rtl, эмодзи, смешанное направление.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/docx_table_merges.docx",
+      "format": "docx",
+      "group": "content",
+      "sizeBytes": 37217,
+      "sha256": "2e4e866131f62a0a9e2b22f77eaf5220c533b17609b0906d491199e37c587832",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-03",
+          "Row-00",
+          "Row-39"
+        ]
+      },
+      "notes": "Таблица 40×3: вертикальное слияние строк 6–10 первого столбца и горизонтальное слияние в строке 16.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/failure/corrupt_truncated.pptx",
+      "format": "pptx",
+      "group": "failure",
+      "sizeBytes": 20709,
+      "sha256": "b0de14ed9e0a13b7e928f57ad6aa942b9e846d68cc58aff437d022ffc82bcf63",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "не оценено: ожидание — отказ с понятной ошибкой"
+        ]
+      },
+      "notes": "ZIP усечён в центральном каталоге: не зависать, не терять данные молча.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/failure/corrupt_xml.pptx",
+      "format": "pptx",
+      "group": "failure",
+      "sizeBytes": 30627,
+      "sha256": "9239107486718f11bbfe9ac9dfd1f838cf6e2ba480b625ee3b047a022b3c103a",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "не оценено: ожидание — отказ с понятной ошибкой"
+        ]
+      },
+      "notes": "[Content_Types].xml повреждён.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/failure/external_links.docx",
+      "format": "docx",
+      "group": "failure",
+      "sizeBytes": 38920,
+      "sha256": "3996113574c44437c528bd5d896ccb341f1ff46fea93ea8b96dc57bdfca54730",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "External link CORPUS-FAIL-EXT"
+        ]
+      },
+      "notes": "Внешняя hyperlink-связь: офлайн-режим не делает сетевых запросов; переход — только явное действие.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/failure/missing_image_rel.docx",
+      "format": "docx",
+      "group": "failure",
+      "sizeBytes": 38571,
+      "sha256": "22d026326c05897a7abc3ab6440f7b136d74f707aec1e8b27809c5de581e6f5d",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-01"
+        ]
+      },
+      "notes": "Ссылка на отсутствующее изображение: деградация с плейсхолдером, не срыв открытия.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/failure/zip_bomb.docx",
+      "format": "docx",
+      "group": "failure",
+      "sizeBytes": 650448,
+      "sha256": "44dec9b18f5a80d5f48fadcca22baf60136b01934413ad91f3a3309edc3c2571",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-DOCX-01"
+        ]
+      },
+      "notes": "600 МБ нулей внутри пакета: движок с жадной распаковкой обязан иметь лимит.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/image_only_4p.pdf",
+      "format": "pdf",
+      "group": "content",
+      "sizeBytes": 293069,
+      "sha256": "26fa63aaa883026434c65b22726ae9b648c9bfd4ec804804daec459ba42e19bd",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": []
+      },
+      "notes": "Документ без текстового слоя: поиск обязан сообщить отсутствие слоя, а не «ничего не найдено».",
+      "reference": "не оценено (нет экспорта из приложения-источника)",
+      "pages": 4
+    },
+    {
+      "file": "test/fixtures/reader_corpus/pptx_basic_theme.pptx",
+      "format": "pptx",
+      "group": "content",
+      "sizeBytes": 31064,
+      "sha256": "a5b1979cad4c7339b343bb781e0288fb55f0c6b4dc37dd2c602085a70980c556",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-PPTX-01",
+          "Second slide",
+          "Third slide with dark theme background"
+        ]
+      },
+      "notes": "Тема, группа фигур, обрезанное изображение, тёмный фон третьего слайда.",
+      "reference": "не оценено (нет экспорта из приложения-источника)",
+      "slides": 3
+    },
+    {
+      "file": "test/fixtures/reader_corpus/pptx_chart.pptx",
+      "format": "pptx",
+      "group": "content",
+      "sizeBytes": 34553,
+      "sha256": "589f3ec5cc0c7db6fa706b7ae98fec1cef8a1c8b48b2f655cd628fa223d85102",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-PPTX-04"
+        ]
+      },
+      "notes": "Диаграмма (графический фрейм): сохранность объекта, а не точная отрисовка.",
+      "reference": "не оценено (нет экспорта из приложения-источника)",
+      "slides": 1
+    },
+    {
+      "file": "test/fixtures/reader_corpus/pptx_gradient_bg.pptx",
+      "format": "pptx",
+      "group": "content",
+      "sizeBytes": 29720,
+      "sha256": "76f8e410a9d6ec57d212168b468ca64374966e2250064480585d1b2eddef5b98",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-PPTX-07"
+        ]
+      },
+      "notes": "Градиентный фон слайда (gradFill вместо solid).",
+      "reference": "не оценено (нет экспорта из приложения-источника)",
+      "slides": 2
+    },
+    {
+      "file": "test/fixtures/reader_corpus/pptx_many_slides.pptx",
+      "format": "pptx",
+      "group": "content",
+      "sizeBytes": 81182,
+      "sha256": "ad850c51c809fce6b8a956600aebc84759c3af89fd4cc92b8fa5eb6f4600f0ed",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-PPTX-02",
+          "Slide 1 of 60",
+          "Slide 60 of 60"
+        ]
+      },
+      "notes": "Много слайдов: порядок и подписи 1..60.",
+      "reference": "не оценено (нет экспорта из приложения-источника)",
+      "slides": 60
+    },
+    {
+      "file": "test/fixtures/reader_corpus/pptx_rotated_group.pptx",
+      "format": "pptx",
+      "group": "content",
+      "sizeBytes": 31084,
+      "sha256": "6d8f66abbf1d6f64925655da4721fd00373c4e32edfe57a8aa654a3ab7eee5d6",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-PPTX-01"
+        ]
+      },
+      "notes": "Поворот группы на 90° и отражения внутри (rot/flipH/flipV).",
+      "reference": "не оценено (нет экспорта из приложения-источника)",
+      "slides": 3
+    },
+    {
+      "file": "test/fixtures/reader_corpus/pptx_svg_image.pptx",
+      "format": "pptx",
+      "group": "content",
+      "sizeBytes": 29172,
+      "sha256": "612b33d0b7fa4448532bc1f162056a7438cb47fff0c327a5b89db49475846610",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-PPTX-05"
+        ]
+      },
+      "notes": "svgBlip поверх PNG-fallback: движок без SVG обязан показать fallback.",
+      "reference": "не оценено (нет экспорта из приложения-источника)",
+      "slides": 1
+    },
+    {
+      "file": "test/fixtures/reader_corpus/pptx_table.pptx",
+      "format": "pptx",
+      "group": "content",
+      "sizeBytes": 28493,
+      "sha256": "c9b71b59394ed3d1892115bd57d9c8c18568ac6b4ba506e7c70ed9c9c4d8f357",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-PPTX-03",
+          "Cell 4,2"
+        ]
+      },
+      "notes": "Таблица 5×3 с заливкой ячеек.",
+      "reference": "не оценено (нет экспорта из приложения-источника)",
+      "slides": 1
+    },
+    {
+      "file": "test/fixtures/reader_corpus/pptx_text_runs.pptx",
+      "format": "pptx",
+      "group": "content",
+      "sizeBytes": 28455,
+      "sha256": "b7ec08c76e6a6ac522b8a3d02c5b35ec304c5562990964888995d0af039c9d21",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-PPTX-08"
+        ]
+      },
+      "notes": "Смешанные runs (bold/italic), normAutofit fontScale, перенос текста.",
+      "reference": "не оценено (нет экспорта из приложения-источника)",
+      "slides": 1
+    },
+    {
+      "file": "test/fixtures/reader_corpus/sample_long.md",
+      "format": "markdown",
+      "group": "content",
+      "sizeBytes": 11423,
+      "sha256": "279e27c912d241d2aec55a086a6fad4e19f47746295d1fb7dfbc133a9b09290e",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-MD-02",
+          "Section 120"
+        ]
+      },
+      "notes": "120 секций: прокрутка и выделение в длинном документе.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/sample_long.txt",
+      "format": "txt",
+      "group": "content",
+      "sizeBytes": 31200,
+      "sha256": "7d6875b4c2e6187d4d8f0f8873d07de7dc68a0a840a68a79d0bd23343d29f400",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-TXT-01",
+          "Line 0600"
+        ]
+      },
+      "notes": "600 строк: потоковая прокрутка, процент позиции.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/sample_nested.md",
+      "format": "markdown",
+      "group": "content",
+      "sizeBytes": 357,
+      "sha256": "9c935525626d0aba2418bc93b8992f2861fbe07cce4d1b797455aeef1019952b",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-MD-01",
+          "Blockquote"
+        ]
+      },
+      "notes": "Вложенные конструкции markdown: выделение/поиск поверх кода, таблиц, цитат.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/sample_utf16_bom.txt",
+      "format": "txt",
+      "group": "content",
+      "sizeBytes": 138,
+      "sha256": "a721cfd94eaaf8b2c35add022d022d39ae68799bf1189ef1eaab36059712a47a",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "CORPUS-TXT-02",
+          "Вторая строка"
+        ]
+      },
+      "notes": "UTF-16 с BOM: ветка декодера ридера.",
+      "reference": "не оценено (нет экспорта из приложения-источника)"
+    },
+    {
+      "file": "test/fixtures/reader_corpus/text_searchable_24p.pdf",
+      "format": "pdf",
+      "group": "content",
+      "sizeBytes": 19783,
+      "sha256": "670718a04006452c239b1a703f109111187d7620aa1338f3a63b02f44f17921e",
+      "origin": "синтетический, детерминированно сгенерирован tools/reader_benchmarks/generate_corpus.py",
+      "license": "оригинальный синтетический контент; сторонние шрифты не встроены",
+      "expect": {
+        "textOrder": [
+          "Corpus PDF fixture - page 1",
+          "CORPUS-PDF-01",
+          "page 24 / 24"
+        ]
+      },
+      "notes": "Эталон задаётся самим генератором (текст из 24 страниц, метки на строках 4 и 18).",
+      "reference": "не оценено (нет экспорта из приложения-источника)",
+      "pages": 24
+    }
+  ]
+}
