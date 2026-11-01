@@ -14,9 +14,29 @@ adb -s <device> push test/fixtures/reader_corpus /data/local/tmp/folio_corpus
 
 ## 1. Исходные замеры открытия и кадров (v1 harness)
 
+Проверенная процедура (выводы 2026-11-01):
+
+1. `flutter test --profile` не существует; численные прогоны идут через
+   `flutter run --profile` с integration-целью или `flutter drive --profile`
+   (drive переустанавливает приложение и стирает его данные).
+2. Установщик стирает внешние файлы приложения, поэтому корпус кладётся
+   **после** запуска: harness печатает `PERF_WAITING_FOR_CORPUS <dir>` и ждёт
+   до 3 минут. Пушить в `/storage/emulated/0/Android/data/com.example.folio/files/folio_corpus`
+   (приложение видит свой каталог без разрешений).
+3. Экран устройства должен гореть: два прогона погибли на «Lost connection»
+   при заблокированном экране. На время прогона: `adb shell svc power stayon
+   true`, после — вернуть `false`.
+4. **Известное ограничение v1**: Office-открытия не доходят до `ready` внутри
+   голой сцены harness (сессия готовится, но события view не приходят) —
+   те же файлы через `office_glass_test` на этом устройстве открываются.
+   До разбора офисная часть отчёта помечается «не оценено».
+
 ```bash
-flutter test integration_test/reader_performance_test.dart -d <device> --profile \
-  --dart-define=FOLIO_PERF_CORPUS_DIR=/data/local/tmp/folio_corpus
+flutter run --profile -d <device> integration_test/reader_performance_test.dart \
+  --dart-define=FOLIO_PERF_CORPUS_DIR=/storage/emulated/0/Android/data/com.example.folio/files/folio_corpus
+# после запуска приложения:
+adb -s <device> shell "mkdir -p /storage/emulated/0/Android/data/com.example.folio/files/folio_corpus && \
+  tar xzf /data/local/tmp/corpus.tar.gz -C /storage/emulated/0/Android/data/com.example.folio/files/folio_corpus --strip-components=1"
 ```
 
 - В консоли ищется строка `PERF_RESULTS {json}` — это артефакт отчёта;
