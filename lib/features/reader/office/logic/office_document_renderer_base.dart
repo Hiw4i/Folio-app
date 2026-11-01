@@ -339,6 +339,10 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
   ///
   /// Platform-channel jumps coalesce like PDF seeks: only the latest
   /// fraction survives a fast drag, stale channel calls never pile up.
+  ///
+  /// The returned future completes when the channel command has been
+  /// delivered (or coalesced away) — NOT when the rendered page is on
+  /// screen. The confirmed position arrives through `position` events.
   Future<void> seekToFraction(double fraction) {
     final view = _view;
     if (_disposed || !_viewReady || view == null || positionCount <= 1) {

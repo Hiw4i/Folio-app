@@ -73,6 +73,10 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   /// fraction is kept (`_pendingSeekFraction`) and stale completions are
   /// dropped via `_seekRevision`, so a 120Hz drag never piles up dozens of
   /// concurrent `goToPosition` calls.
+  ///
+  /// The returned future completes when the jump command has been delivered
+  /// (or coalesced away) — NOT when the rasterized page is on screen. The
+  /// confirmed position arrives through [scrollFraction] viewer events.
   Future<void> seekToFraction(double fraction) async {
     if (_disposed || _viewerController == null) {
       return;
