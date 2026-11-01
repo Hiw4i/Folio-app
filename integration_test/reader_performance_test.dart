@@ -60,6 +60,7 @@ Future<void> main() async {
 
   testWidgets('reader open latency and frame window per corpus file', (tester) async {
     final results = <Map<String, Object?>>[];
+    await _waitForCorpus(corpusDir);
     for (final name in _representativeFiles) {
       final file = File('$corpusDir/$name');
       if (!file.existsSync()) {
@@ -91,6 +92,21 @@ Future<void> main() async {
       'results': results,
     })}');
   });
+}
+
+/// The test runner reinstalls the app and wipes its external files dir, so
+/// the corpus push happens after launch. Poll until the pushed corpus shows
+/// up (or time out with an honest all-missing report).
+Future<void> _waitForCorpus(String directory) async {
+  final deadline = DateTime.now().add(const Duration(minutes: 3));
+  while (DateTime.now().isBefore(deadline)) {
+    final marker = Directory(directory);
+    if (marker.existsSync() && marker.listSync().isNotEmpty) {
+      return;
+    }
+    debugPrint('PERF_WAITING_FOR_CORPUS $directory');
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+  }
 }
 
 DocumentEntry _entryFor(File file) {

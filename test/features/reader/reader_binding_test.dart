@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/features/reader/logic/reader_navigation.dart';
 import 'package:folio/features/reader/office/widgets/office_staged_view.dart';
 import 'package:folio/features/reader/pdf/widgets/pdf_document_view.dart';
+import 'package:folio/features/reader/widgets/reader_loading_view.dart';
 import 'package:folio/features/reader/powerpoint/widgets/powerpoint_document_view.dart';
 import 'package:folio/features/reader/widgets/bindings/office_reader_binding.dart';
 import 'package:folio/features/reader/widgets/bindings/pdf_reader_binding.dart';
@@ -34,7 +35,12 @@ void main() {
           onSelectionChanged: (_) {},
         ),
       );
-      expect(surface, isA<PdfDocumentView>());
+      // The pdf branch wraps the viewer in the stable fade wrapper.
+      expect(surface, isA<ReaderContentFadeIn>());
+      expect(
+        (surface as ReaderContentFadeIn).child,
+        isA<PdfDocumentView>(),
+      );
     });
   });
 

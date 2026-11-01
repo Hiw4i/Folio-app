@@ -2,6 +2,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../pdf/logic/pdf_document_renderer.dart';
 import '../../pdf/widgets/pdf_document_view.dart';
+import '../reader_loading_view.dart';
 import 'pdf_reader_navigation.dart';
 import 'reader_binding.dart';
 
@@ -26,10 +27,19 @@ final class PdfReaderBinding implements ReaderBinding {
 
   @override
   Widget buildSurface(ReaderSurfaceCallbacks callbacks) {
-    return PdfDocumentView(
-      renderer: renderer,
-      onContentTap: callbacks.onContentTap,
-      onVerticalReadingGesture: (delta) => callbacks.onReadingDrag(delta, true),
+    // Progressive loading: as soon as the document reference exists the
+    // viewer mounts and streams pages; its internal banner (same unified
+    // design) covers the remaining wait. The fade wrapper sits at a stable
+    // position so the viewer state survives the loading → ready rebuild.
+    if (!renderer.sourceReady) {
+      return ReaderLoadingView(document: renderer.document);
+    }
+    return ReaderContentFadeIn(
+      child: PdfDocumentView(
+        renderer: renderer,
+        onContentTap: callbacks.onContentTap,
+        onVerticalReadingGesture: (delta) => callbacks.onReadingDrag(delta, true),
+      ),
     );
   }
 

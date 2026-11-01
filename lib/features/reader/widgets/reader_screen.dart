@@ -1,13 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/gestures.dart' show kPrimaryButton;
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
-import 'package:scroll_to_index/scroll_to_index.dart';
 
-import '../../../shared/diagnostics/app_log.dart';
 import '../../../shared/glass/liquid_glass.dart';
 import '../../../shared/settings/folio_settings_scope.dart';
 import '../../../shared/theme/folio_theme.dart';
@@ -15,24 +12,16 @@ import '../../library/data/document_entry.dart';
 import '../data/document_content_source.dart';
 import '../logic/chrome_visibility.dart';
 import '../logic/document_renderer.dart';
-import '../logic/reader_navigation.dart';
 import '../logic/reader_state.dart';
 import '../logic/renderer_lifecycle.dart';
 import '../logic/title_truncation.dart';
-import '../office/widgets/office_staged_view.dart';
-import '../pdf/widgets/pdf_document_view.dart';
-import '../powerpoint/widgets/powerpoint_document_view.dart';
-import '../text/widgets/text_document_view.dart';
-import '../word/widgets/word_document_view.dart';
 import 'file_info_sheet.dart';
-import 'bindings/office_reader_navigation.dart';
-import 'bindings/pdf_reader_navigation.dart';
-import 'bindings/text_reader_navigation.dart';
+import 'bindings/reader_binding.dart';
+import 'bindings/reader_binding_factory.dart';
 import 'reader_chrome.dart';
 import 'reader_menu_overlays.dart';
 import 'reader_search_navigator.dart';
 import 'reader_status_views.dart';
-import 'reader_loading_view.dart';
 import 'reader_scrubber.dart';
 
 class ReaderScreen extends StatefulWidget {
@@ -80,35 +69,27 @@ class ReaderScreen extends StatefulWidget {
 
 class _ReaderScreenState extends State<ReaderScreen>
     with SingleTickerProviderStateMixin {
-  final AutoScrollController _scrollController = AutoScrollController(
-    axis: Axis.vertical,
-    suggestedRowHeight: 3200,
-  );
   final GlobalKey<LiquidSearchControlState> _searchKey =
       GlobalKey<LiquidSearchControlState>();
   final GlobalKey<LiquidMorphingControlState> _menuKey =
       GlobalKey<LiquidMorphingControlState>();
   final GlobalKey<LiquidMorphingControlState> _exitKey =
       GlobalKey<LiquidMorphingControlState>();
-  GlobalKey _activeHitKey = GlobalKey();
   late final DocumentRenderer _renderer;
 
-  /// Transitional: the one navigation adapter for this screen, created once
-  /// with the existing text scroll/progress resources. Task 6 moves this
-  /// type choice into the reader binding factory.
-  late final ReaderNavigation _navigation;
+  /// The one UI adapter for the active renderer, chosen once by the binding
+  /// factory. It owns the format's UI-side resources (navigation, text scroll
+  /// controller, percent projection) and builds the document surface.
+  late final ReaderBinding _binding;
   late final AnimationController _chromeController;
   late final CurvedAnimation _chromeProgress;
-  final ValueNotifier<int> _progressPercent = ValueNotifier<int>(0);
   Timer? _searchDebounce;
   Timer? _initialLoadDelay;
-  int _revealGeneration = 0;
   bool _chromeTarget = true;
   bool _searchExpanded = false;
   bool _menuOpen = false;
   bool _exitOpen = false;
   bool _infoOpen = false;
-  int _lastActiveHit = -2;
   int? _contentPointer;
   Offset? _contentPointerOrigin;
   bool _contentPointerMoved = false;
@@ -139,15 +120,14 @@ class _ReaderScreenState extends State<ReaderScreen>
           document: widget.document,
           contentSource: widget.contentSource,
         );
-    _navigation = _createNavigation();
+    _binding = createReaderBinding(_renderer);
     _renderer.addListener(_rendererChanged);
-    _scrollController.addListener(_scrollChanged);
     // A text viewport attaching to its scroll controller produces no
     // notification; revalidate after the first frame so the scrubber state
     // reflects the attached viewport.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _navigation.revalidate();
+        _binding.navigation.revalidate();
       }
     });
     if (widget.initialRenderer != null) {
@@ -220,138 +200,12 @@ class _ReaderScreenState extends State<ReaderScreen>
     // attaching its viewer, Office posting ready) even when no scroll or
     // progress source fires. Revalidated post-frame because the format view
     // that attaches the viewport builds in response to this notification.
+    // Search-hit reveals are owned by the text surface.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _navigation.revalidate();
+        _binding.navigation.revalidate();
       }
     });
-    if (!mounted || _lastActiveHit == _renderer.activeHitIndex) {
-      return;
-    }
-    _lastActiveHit = _renderer.activeHitIndex;
-    final generation = ++_revealGeneration;
-    _activeHitKey = GlobalKey(
-      debugLabel: 'reader active search hit ${_renderer.activeHitIndex}',
-    );
-    if (_renderer.activeHit != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(_revealActiveHit(generation));
-      });
-    }
-  }
-
-  void _scrollChanged() {
-    if (!_scrollController.hasClients) {
-      return;
-    }
-    final extent = _scrollController.position.maxScrollExtent;
-    final next = extent <= 0
-        ? 0
-        : (_scrollController.offset / extent * 100).round().clamp(0, 100);
-    if (next != _progressPercent.value) {
-      _progressPercent.value = next;
-    }
-  }
-
-  Future<void> _revealActiveHit(int generation) async {
-    if (!mounted || !_scrollController.hasClients) {
-      return;
-    }
-    final renderer = _renderer;
-    if (renderer is! TextDocumentRenderer || renderer.activeHit == null) {
-      return;
-    }
-    final content = renderer.content;
-    if (content == null || content.chunks.isEmpty) {
-      return;
-    }
-    final hit = renderer.activeHit!;
-    final chunkIndex = hit.chunkIndex;
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    if (_activeHitKey.currentContext == null) {
-      try {
-        await _scrollController.scrollToIndex(
-          chunkIndex,
-          preferPosition: AutoScrollPosition.begin,
-          duration: reducedMotion ? Duration.zero : AppDurations.fast,
-        );
-      } catch (error, stack) {
-        // Route disposal can invalidate the target between scheduling and
-        // scrolling; debug-only visibility, the failure is expected.
-        AppLog.d('Active-hit scroll skipped: $error\n$stack');
-        return;
-      }
-    }
-    if (!mounted || generation != _revealGeneration) {
-      return;
-    }
-    await WidgetsBinding.instance.endOfFrame;
-    if (!mounted || generation != _revealGeneration) {
-      return;
-    }
-
-    final targetContext = _activeHitKey.currentContext;
-    final targetObject = targetContext?.findRenderObject();
-    if (targetContext == null ||
-        !targetContext.mounted ||
-        targetObject == null ||
-        !targetObject.attached) {
-      return;
-    }
-    final paragraph = content.isMarkdown
-        ? null
-        : _findRenderParagraph(targetObject);
-    final revealObject = paragraph ?? targetObject;
-    final viewport = RenderAbstractViewport.maybeOf(revealObject);
-    if (viewport == null) {
-      return;
-    }
-    if (!_scrollController.hasClients) {
-      return;
-    }
-    final position = _scrollController.position;
-    var targetOffset = viewport.getOffsetToReveal(revealObject, 0.28).offset;
-    if (paragraph != null) {
-      final chunk = content.chunks[chunkIndex];
-      final localStart = (hit.startOffset - chunk.startOffset).clamp(
-        0,
-        chunk.text.length,
-      );
-      final localEnd = (hit.endOffset - chunk.startOffset).clamp(
-        localStart,
-        chunk.text.length,
-      );
-      final boxes = paragraph.getBoxesForSelection(
-        TextSelection(baseOffset: localStart, extentOffset: localEnd),
-      );
-      if (boxes.isNotEmpty) {
-        targetOffset =
-            viewport.getOffsetToReveal(paragraph, 0).offset +
-            boxes.first.top -
-            position.viewportDimension * 0.28;
-      }
-    }
-    targetOffset = targetOffset.clamp(
-      position.minScrollExtent,
-      position.maxScrollExtent,
-    );
-    if ((position.pixels - targetOffset).abs() < 1) {
-      return;
-    }
-    if (reducedMotion) {
-      _scrollController.jumpTo(targetOffset);
-      return;
-    }
-    try {
-      await _scrollController.animateTo(
-        targetOffset,
-        duration: AppDurations.fast,
-        curve: AppCurves.emphasized,
-      );
-    } catch (error, stack) {
-      // A newer search result or route disposal can cancel this animation.
-      AppLog.d('Active-hit reveal animation skipped: $error\n$stack');
-    }
   }
 
   void _searchChanged(String query) {
@@ -578,40 +432,39 @@ class _ReaderScreenState extends State<ReaderScreen>
     _recordChromeScroll(scrollDelta, canHide: true);
   }
 
-  /// The single navigation adapter for the active renderer. This type switch
-  /// is the screen's one temporary format decision; the binding factory
-  /// takes it over when the surfaces split off.
-  ReaderNavigation _createNavigation() {
+  /// The document surface for the active renderer. Failure handling stays in
+  /// the shell (it owns retry and chrome reset); everything format-specific —
+  /// loading stages, empty states, the surface itself — lives in the binding.
+  Widget _buildDocumentSurface() {
     final renderer = _renderer;
-    return switch (renderer) {
-      PdfDocumentRenderer() => PdfReaderNavigation(renderer),
-      OfficeDocumentRendererBase() => OfficeReaderNavigation(
-        renderer,
-        supportsScrubbing: renderer is! PowerPointDocumentRenderer,
+    if (renderer.loadState == ReaderLoadState.failed) {
+      return ReaderFailureView(
+        failure: renderer.failure!,
+        onRetry: renderer.open,
+      );
+    }
+    return _binding.buildSurface(
+      ReaderSurfaceCallbacks(
+        onContentTap: _handleContentTap,
+        onReadingDrag: (delta, canHide) {
+          if (canHide) {
+            _handleVerticalReadingGesture(delta);
+          }
+        },
+        onSelectionChanged: _textSelectionChanged,
       ),
-      TextDocumentRenderer() => TextReaderNavigation(
-        renderer: renderer,
-        scrollController: _scrollController,
-        progressPercent: _progressPercent,
-      ),
-      _ => _StaticReaderNavigation(renderer.document),
-    };
+    );
   }
 
   @override
   void dispose() {
     _searchDebounce?.cancel();
     _initialLoadDelay?.cancel();
-    _revealGeneration += 1;
     _renderer.removeListener(_rendererChanged);
-    _navigation.dispose();
+    _binding.dispose();
     releaseDocumentRenderer(_renderer);
-    _scrollController
-      ..removeListener(_scrollChanged)
-      ..dispose();
     _chromeProgress.dispose();
     _chromeController.dispose();
-    _progressPercent.dispose();
     widget.onDisposed?.call();
     super.dispose();
   }
@@ -654,14 +507,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                 onNotification: _onScrollNotification,
                 child: AnimatedBuilder(
                   animation: _renderer,
-                  builder: (context, child) => _ReaderBody(
-                    renderer: _renderer,
-                    scrollController: _scrollController,
-                    activeHitKey: _activeHitKey,
-                    onContentTap: _handleContentTap,
-                    onTextSelectionChanged: _textSelectionChanged,
-                    onReadingGesture: _handleVerticalReadingGesture,
-                  ),
+                  builder: (context, child) => _buildDocumentSurface(),
                 ),
               ),
             ),
@@ -689,11 +535,11 @@ class _ReaderScreenState extends State<ReaderScreen>
                       progress: _chromeProgress,
                       hiddenDy: ReaderChromeSpec.pillHiddenDy,
                       child: AnimatedBuilder(
-                        animation: _navigation,
+                        animation: _binding.navigation,
                         builder: (context, child) {
                           return ReaderProgressPill(
                             key: const ValueKey<String>('reader_progress_glass'),
-                            label: _navigation.snapshot.positionLabel,
+                            label: _binding.navigation.snapshot.positionLabel,
                           );
                         },
                       ),
@@ -708,7 +554,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                         media.viewPadding.bottom +
                         120,
                     width: 110,
-                    child: ReaderScrubber(navigation: _navigation),
+                    child: ReaderScrubber(navigation: _binding.navigation),
                   ),
                   Positioned(
                     left: 0,
@@ -901,110 +747,6 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 }
 
-RenderParagraph? _findRenderParagraph(RenderObject root) {
-  if (root is RenderParagraph) {
-    return root;
-  }
-  RenderParagraph? result;
-  root.visitChildren((child) {
-    result ??= _findRenderParagraph(child);
-  });
-  return result;
-}
-
-class _ReaderBody extends StatelessWidget {
-  const _ReaderBody({
-    required this.renderer,
-    required this.scrollController,
-    required this.activeHitKey,
-    required this.onContentTap,
-    required this.onReadingGesture,
-    required this.onTextSelectionChanged,
-  });
-
-  final DocumentRenderer renderer;
-  final AutoScrollController scrollController;
-  final GlobalKey activeHitKey;
-  final VoidCallback onContentTap;
-  final ValueChanged<double> onReadingGesture;
-  final ValueChanged<bool> onTextSelectionChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    // One loading surface for every format. Office keeps its platform view
-    // mounted underneath and crossfades: the WebView's own HTML status is
-    // never shown (transparent background, opacity 0 until ready).
-    if (renderer.loadState == ReaderLoadState.failed) {
-      return ReaderFailureView(
-        failure: renderer.failure!,
-        onRetry: renderer.open,
-      );
-    }
-    if (renderer is TextDocumentRenderer) {
-      final text = renderer as TextDocumentRenderer;
-      if (renderer.loadState == ReaderLoadState.loading) {
-        return ReaderLoadingView(document: renderer.document);
-      }
-      final content = text.content;
-      if (content == null || content.chunks.isEmpty) {
-        return const ReaderStatusView(
-          title: 'Nothing to display',
-          message: 'This document has no readable content.',
-        );
-      }
-      return ReaderContentFadeIn(
-        child: TextDocumentView(
-          renderer: text,
-          scrollController: scrollController,
-          activeHitKey: activeHitKey,
-          onSelectionChanged: onTextSelectionChanged,
-        ),
-      );
-    }
-    if (renderer is PdfDocumentRenderer) {
-      final pdf = renderer as PdfDocumentRenderer;
-      // Progressive loading: as soon as the document reference exists the
-      // viewer mounts and streams pages; its internal banner (same unified
-      // design) covers the remaining wait. The fade wrapper sits at a stable
-      // position so the viewer state survives the loading → ready rebuild.
-      if (!pdf.sourceReady) {
-        return ReaderLoadingView(document: renderer.document);
-      }
-      return ReaderContentFadeIn(
-        child: PdfDocumentView(
-          renderer: pdf,
-          onContentTap: onContentTap,
-          onVerticalReadingGesture: onReadingGesture,
-        ),
-      );
-    }
-    if (renderer is OfficeDocumentRendererBase) {
-      final office = renderer as OfficeDocumentRendererBase;
-      if (!office.sourceReady) {
-        return ReaderLoadingView(document: renderer.document);
-      }
-      final Widget view = renderer is WordDocumentRenderer
-          ? WordDocumentView(
-              renderer: renderer as WordDocumentRenderer,
-              onContentTap: onContentTap,
-              onReadingGesture: onReadingGesture,
-            )
-          : PowerPointDocumentView(
-              renderer: renderer as PowerPointDocumentRenderer,
-              onContentTap: onContentTap,
-            );
-      return OfficeStagedView(renderer: office, view: view);
-    }
-    if (renderer.loadState == ReaderLoadState.ready) {
-      return const ReaderStatusView(
-        title: 'Nothing to display',
-        message: 'This document has no readable content.',
-      );
-    }
-    return ReaderLoadingView(document: renderer.document);
-  }
-}
-
 /// Horizontal padding inside the reader title pill (18pt each side).
 const double _titlePadding = 36;
 
@@ -1125,33 +867,3 @@ class _LiquidChromeObject extends StatelessWidget {
 
 /// Transitional no-op navigation for renderers without a positional model.
 /// Task 6 replaces this with the binding factory's unsupported fallback.
-final class _StaticReaderNavigation implements ReaderNavigation {
-  _StaticReaderNavigation(this.document);
-
-  final DocumentEntry document;
-
-  @override
-  ReaderNavigationSnapshot get snapshot => ReaderNavigationSnapshot(
-    canSeek: false,
-    showScrubber: false,
-    positionLabel: document.format.extension.toUpperCase(),
-  );
-
-  @override
-  String labelForFraction(double fraction) => snapshot.positionLabel;
-
-  @override
-  Future<void> seekToFraction(double fraction) => Future<void>.value();
-
-  @override
-  void revalidate() {}
-
-  @override
-  void addListener(VoidCallback listener) {}
-
-  @override
-  void removeListener(VoidCallback listener) {}
-
-  @override
-  void dispose() {}
-}
