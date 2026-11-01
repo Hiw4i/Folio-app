@@ -62,6 +62,28 @@ class OfficeRendererStub extends OfficeDocumentRendererBase {
   bool get sourceReady => officeSourceReady;
 }
 
+/// A DOCX renderer stub that passes the binding layer's `is Word` checks.
+class WordRendererStub extends WordDocumentRenderer {
+  WordRendererStub({required super.document})
+    : super(gateway: const PreparedSessionGateway());
+
+  bool officeSourceReady = false;
+
+  @override
+  bool get sourceReady => officeSourceReady;
+}
+
+/// A PPTX renderer stub that passes the binding layer's `is PowerPoint` checks.
+class PowerPointRendererStub extends PowerPointDocumentRenderer {
+  PowerPointRendererStub({required super.document})
+    : super(gateway: const PreparedSessionGateway());
+
+  bool officeSourceReady = false;
+
+  @override
+  bool get sourceReady => officeSourceReady;
+}
+
 class PreparedSessionGateway implements OfficeDocumentGateway {
   const PreparedSessionGateway();
 
