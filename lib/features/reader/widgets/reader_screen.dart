@@ -19,6 +19,7 @@ import '../logic/reader_navigation.dart';
 import '../logic/reader_state.dart';
 import '../logic/renderer_lifecycle.dart';
 import '../logic/title_truncation.dart';
+import '../office/widgets/office_staged_view.dart';
 import '../pdf/widgets/pdf_document_view.dart';
 import '../powerpoint/widgets/powerpoint_document_view.dart';
 import '../text/widgets/text_document_view.dart';
@@ -992,7 +993,7 @@ class _ReaderBody extends StatelessWidget {
               renderer: renderer as PowerPointDocumentRenderer,
               onContentTap: onContentTap,
             );
-      return _OfficeStagedView(renderer: office, view: view);
+      return OfficeStagedView(renderer: office, view: view);
     }
     if (renderer.loadState == ReaderLoadState.ready) {
       return const ReaderStatusView(
@@ -1001,106 +1002,6 @@ class _ReaderBody extends StatelessWidget {
       );
     }
     return ReaderLoadingView(document: renderer.document);
-  }
-}
-
-/// Office staged reveal: the platform view stays mounted at opacity 0 while
-/// rendering (warming under the Flutter loader), then crossfades with the
-/// loader overlay instead of swapping to the WebView's own status text.
-///
-/// While at opacity 0 the platform view is not painted, so its Android view is
-/// not attached to a window yet. Native events must therefore be delivered
-/// independently of window attachment (see `OfficePlatformView.emit`), or the
-/// `ready` handshake would deadlock.
-class _OfficeStagedView extends StatefulWidget {
-  const _OfficeStagedView({required this.renderer, required this.view});
-
-  final OfficeDocumentRendererBase renderer;
-  final Widget view;
-
-  @override
-  State<_OfficeStagedView> createState() => _OfficeStagedViewState();
-}
-
-class _OfficeStagedViewState extends State<_OfficeStagedView> {
-  static const Duration _crossfade = Duration(milliseconds: 240);
-
-  bool _overlayVisible = true;
-  bool _overlayOpaque = true;
-  Timer? _overlayTimer;
-
-  bool get _ready => widget.renderer.loadState == ReaderLoadState.ready;
-
-  @override
-  void initState() {
-    super.initState();
-    _overlayVisible = !_ready;
-    _overlayOpaque = !_ready;
-    widget.renderer.addListener(_rendererChanged);
-  }
-
-  @override
-  void didUpdateWidget(_OfficeStagedView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.renderer, widget.renderer)) {
-      oldWidget.renderer.removeListener(_rendererChanged);
-      widget.renderer.addListener(_rendererChanged);
-      _overlayTimer?.cancel();
-      _overlayVisible = !_ready;
-      _overlayOpaque = !_ready;
-    }
-  }
-
-  void _rendererChanged() {
-    if (!mounted) {
-      return;
-    }
-    if (_ready && _overlayOpaque) {
-      setState(() => _overlayOpaque = false);
-      _overlayTimer?.cancel();
-      _overlayTimer = Timer(_crossfade, () {
-        if (mounted && _ready) {
-          setState(() => _overlayVisible = false);
-        }
-      });
-    }
-  }
-
-  @override
-  void dispose() {
-    _overlayTimer?.cancel();
-    widget.renderer.removeListener(_rendererChanged);
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final reducedMotion = MediaQuery.disableAnimationsOf(context);
-    final ready = _ready;
-    return Stack(
-      fit: StackFit.expand,
-      children: <Widget>[
-        AnimatedOpacity(
-          opacity: ready ? 1 : 0,
-          duration: reducedMotion ? Duration.zero : _crossfade,
-          curve: Curves.easeOutCubic,
-          child: IgnorePointer(ignoring: !ready, child: widget.view),
-        ),
-        // Mounted immediately (no grace): preparation already proved slow by
-        // reaching this stage, so hiding the loader here would flash empty
-        // background. The overlay then crossfades out on `ready`.
-        if (_overlayVisible)
-          AnimatedOpacity(
-            opacity: _overlayOpaque ? 1 : 0,
-            duration: reducedMotion ? Duration.zero : _crossfade,
-            curve: Curves.easeOutCubic,
-            child: ReaderLoadingView(
-              document: widget.renderer.document,
-              immediate: true,
-            ),
-          ),
-      ],
-    );
   }
 }
 
