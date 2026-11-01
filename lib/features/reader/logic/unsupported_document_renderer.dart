@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../library/data/document_entry.dart';
 import 'document_renderer_contract.dart';
+import 'reader_search_state.dart';
 import 'reader_state.dart';
 
 class UnsupportedDocumentRenderer extends ChangeNotifier
@@ -25,6 +26,15 @@ class UnsupportedDocumentRenderer extends ChangeNotifier
   int get hitCount => 0;
   @override
   bool get isSearching => false;
+
+  @override
+  ReaderSearchSnapshot get searchState => const ReaderSearchSnapshot(
+    query: '',
+    phase: ReaderSearchPhase.idle,
+    textAvailability: ReaderTextAvailability.unsupported,
+    hitCount: 0,
+    activeHitIndex: -1,
+  );
 
   @override
   Future<void> open() async {

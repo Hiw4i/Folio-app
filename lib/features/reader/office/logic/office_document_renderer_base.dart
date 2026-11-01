@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../../../library/data/document_entry.dart';
 import '../../logic/document_renderer_contract.dart';
+import '../../logic/reader_search_state.dart';
 import '../../logic/reader_state.dart';
 import '../../logic/renderer_lifecycle.dart';
 import '../data/office_document_gateway.dart';
@@ -64,6 +65,11 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
   int positionCount = 0;
   bool? searchableTextAvailable;
 
+  /// The observed failure of the last search command, cleared by the next
+  /// search, open or close. A failed bridge command must never read as
+  /// zero results.
+  ReaderFailure? searchFailure;
+
   OfficeDocumentSession? get session => _session;
   bool get sourceReady => _session != null;
   String get positionLabel => positionCount <= 0
@@ -73,6 +79,33 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
       query.trim().isNotEmpty &&
       !isSearching &&
       searchableTextAvailable == false;
+
+  @override
+  ReaderSearchSnapshot get searchState => ReaderSearchSnapshot(
+    query: query,
+    phase: _searchPhase,
+    textAvailability: switch (searchableTextAvailable) {
+      null => ReaderTextAvailability.unknown,
+      false => ReaderTextAvailability.absent,
+      true => ReaderTextAvailability.present,
+    },
+    hitCount: hitCount,
+    activeHitIndex: activeHitIndex,
+    failure: searchFailure,
+  );
+
+  ReaderSearchPhase get _searchPhase {
+    if (query.trim().isEmpty) {
+      return ReaderSearchPhase.idle;
+    }
+    if (searchFailure != null) {
+      return ReaderSearchPhase.failed;
+    }
+    if (!sourceReady) {
+      return ReaderSearchPhase.waitingForSource;
+    }
+    return isSearching ? ReaderSearchPhase.searching : ReaderSearchPhase.complete;
+  }
 
   @override
   ReaderSearchHit? get activeHit => null;
@@ -93,6 +126,7 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     failure = null;
     query = '';
     isSearching = false;
+    searchFailure = null;
     hitCount = 0;
     activeHitIndex = -1;
     currentPosition = 1;
@@ -218,7 +252,13 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
         notifyListeners();
         final view = _view;
         if (query.trim().isNotEmpty && view != null) {
-          unawaited(_runViewCommand(view, () => view.search(query)));
+          unawaited(
+            _runViewCommand(
+              view,
+              () => view.search(query),
+              reportsSearchFailure: true,
+            ),
+          );
         }
       case 'position':
         final nextCount = (event['count'] as num?)?.toInt() ?? positionCount;
@@ -255,13 +295,18 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     }
     _commandRevision += 1;
     query = value;
+    searchFailure = null;
     activeHitIndex = -1;
     hitCount = 0;
     isSearching = value.trim().isNotEmpty;
     notifyListeners();
     final view = _view;
     if (_viewReady && view != null) {
-      await _runViewCommand(view, () => view.search(value));
+      await _runViewCommand(
+        view,
+        () => view.search(value),
+        reportsSearchFailure: true,
+      );
     } else if (value.trim().isEmpty) {
       isSearching = false;
       notifyListeners();
@@ -350,8 +395,9 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
 
   Future<void> _runViewCommand(
     OfficeViewCommands view,
-    Future<void> Function() command,
-  ) async {
+    Future<void> Function() command, {
+    bool reportsSearchFailure = false,
+  }) async {
     final revision = _commandRevision;
     try {
       await command();
@@ -362,6 +408,14 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
           revision == _commandRevision) {
         // Search/navigation failure must not replace a readable document
         // with an error page or leave the search indicator spinning forever.
+        if (reportsSearchFailure) {
+          searchFailure = ReaderFailure(
+            kind: ReaderFailureKind.unreadable,
+            title: 'Search failed',
+            message: '$error',
+            canRetry: true,
+          );
+        }
         isSearching = false;
         notifyListeners();
       }
@@ -412,6 +466,7 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     _cancelReadyWatchdog();
     _view = null;
     _viewReady = false;
+    searchFailure = null;
     final session = _session;
     _session = null;
     if (session != null) {

@@ -7,6 +7,7 @@ import 'package:pdfrx/pdfrx.dart';
 import '../../../library/data/document_entry.dart';
 import '../../data/document_content_source.dart';
 import '../../logic/document_renderer_contract.dart';
+import '../../logic/reader_search_state.dart';
 import '../../logic/reader_state.dart';
 import '../../logic/renderer_lifecycle.dart';
 
@@ -185,6 +186,27 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
       query.trim().isNotEmpty &&
       !isSearching &&
       searchableTextAvailable == false;
+
+  @override
+  ReaderSearchSnapshot get searchState => ReaderSearchSnapshot(
+    query: query,
+    // A query cannot produce a final result before the source exists, so
+    // waiting outranks the searching flag even when both are true.
+    phase: query.trim().isEmpty
+        ? ReaderSearchPhase.idle
+        : !sourceReady
+        ? ReaderSearchPhase.waitingForSource
+        : isSearching
+        ? ReaderSearchPhase.searching
+        : ReaderSearchPhase.complete,
+    textAvailability: switch (searchableTextAvailable) {
+      null => ReaderTextAvailability.unknown,
+      false => ReaderTextAvailability.absent,
+      true => ReaderTextAvailability.present,
+    },
+    hitCount: hitCount,
+    activeHitIndex: activeHitIndex,
+  );
 
   @override
   int get hitCount => _textSearcher?.matches.length ?? 0;

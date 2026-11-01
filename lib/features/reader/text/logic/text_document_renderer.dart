@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../../../library/data/document_entry.dart';
 import '../../data/document_content_source.dart';
 import '../../logic/document_renderer_contract.dart';
+import '../../logic/reader_search_state.dart';
 import '../../logic/reader_state.dart';
 import '../data/text_document.dart';
 
@@ -29,6 +30,10 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   bool isSearching = false;
   @override
   int activeHitIndex = -1;
+
+  /// The observed failure of the last search attempt, cleared by the next
+  /// search, open or close. A failed search must never read as zero results.
+  ReaderFailure? searchFailure;
   int _openGeneration = 0;
   int _searchRevision = 0;
   bool _disposed = false;
@@ -49,6 +54,36 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   }
 
   @override
+  ReaderSearchSnapshot get searchState => ReaderSearchSnapshot(
+    query: query,
+    phase: _searchPhase,
+    // A loaded text document always carries a text layer; a document that
+    // failed with an encoding problem never will.
+    textAvailability: switch (loadState) {
+      ReaderLoadState.ready => ReaderTextAvailability.present,
+      ReaderLoadState.failed when failure?.kind == ReaderFailureKind.unsupportedEncoding =>
+        ReaderTextAvailability.unsupported,
+      _ => ReaderTextAvailability.unknown,
+    },
+    hitCount: hitCount,
+    activeHitIndex: activeHitIndex,
+    failure: searchFailure,
+  );
+
+  ReaderSearchPhase get _searchPhase {
+    if (query.trim().isEmpty) {
+      return ReaderSearchPhase.idle;
+    }
+    if (searchFailure != null) {
+      return ReaderSearchPhase.failed;
+    }
+    if (loadState != ReaderLoadState.ready) {
+      return ReaderSearchPhase.waitingForSource;
+    }
+    return isSearching ? ReaderSearchPhase.searching : ReaderSearchPhase.complete;
+  }
+
+  @override
   Future<void> open() async {
     if (_disposed) {
       return;
@@ -58,6 +93,7 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     loadState = ReaderLoadState.loading;
     failure = null;
     content = null;
+    searchFailure = null;
     _clearSearch(notify: false);
     notifyListeners();
     try {
@@ -130,6 +166,7 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     }
     final normalized = value.trim();
     query = value;
+    searchFailure = null;
     final loaded = content;
     final revision = ++_searchRevision;
     if (normalized.isEmpty || loaded == null) {
@@ -165,6 +202,12 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
             );
     } catch (error) {
       if (!_disposed && revision == _searchRevision) {
+        searchFailure = ReaderFailure(
+          kind: ReaderFailureKind.unreadable,
+          title: 'Search failed',
+          message: '$error',
+          canRetry: true,
+        );
         isSearching = false;
         notifyListeners();
       }
@@ -222,6 +265,7 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     query = '';
     isSearching = false;
     activeHitIndex = -1;
+    searchFailure = null;
     _hits = const <ReaderSearchHit>[];
     _hitsByChunk = const <int, List<ReaderSearchHit>>{};
     if (notify) {
