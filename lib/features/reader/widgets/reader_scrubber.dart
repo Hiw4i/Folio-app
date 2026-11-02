@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../../shared/glass/liquid_glass.dart';
 import '../../../shared/theme/folio_theme.dart';
+import '../../../shared/widgets/scale_reveal.dart';
 import '../logic/reader_navigation.dart';
 import '../logic/reader_scrub_controller.dart';
 
@@ -42,8 +43,15 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
   static const double _pillHeight = 38;
   static const double _stripWidth = 40;
   static const double _edgeInset = 10;
-  static const double _knobWidth = 9;
+
+  /// Visually narrower than the grab area: the gesture halo keeps the wide
+  /// touch target while the glass knob itself reads thinner.
+  static const double _knobWidth = 7;
   static const double _knobHeight = 36;
+
+  /// The knob fades out this long after page scrolling stops; scrolling or
+  /// grabbing the knob brings it straight back.
+  static const Duration _knobIdleHideDelay = Duration(seconds: 1);
 
   /// Invisible grab halo around the knob: only this box handles gestures,
   /// everything else on the edge passes touches through to the document.
@@ -52,6 +60,16 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
   late ReaderScrubController _controller;
   ReaderNavigation? _listenedNavigation;
   bool _reportedScrubbing = false;
+
+  /// Glass knob visibility: shown while the page scrolls or the knob is
+  /// held, faded out [_knobIdleHideDelay] after the last scroll tick. The
+  /// gesture area stays interactive in every state.
+  bool _knobShown = true;
+  Timer? _knobHideTimer;
+
+  /// The readout pill stays mounted across its reveal exit so
+  /// [ScaleReveal] can animate it out before it leaves the tree.
+  bool _pillInTree = false;
 
   /// Knob travel (px) from the last layout. Layout cache only: written
   /// during build without `setState`, read by the next drag update so the
@@ -66,6 +84,7 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
   void initState() {
     super.initState();
     _attach(widget.navigation);
+    _showKnob(scheduleHide: true);
   }
 
   @override
@@ -93,8 +112,24 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
     _reportScrubbing(false);
   }
 
+  void _showKnob({required bool scheduleHide}) {
+    _knobHideTimer?.cancel();
+    _knobHideTimer = null;
+    if (!_knobShown && mounted) {
+      setState(() => _knobShown = true);
+    }
+    if (scheduleHide && mounted) {
+      _knobHideTimer = Timer(_knobIdleHideDelay, () {
+        if (mounted && !_controller.isScrubbing && _knobShown) {
+          setState(() => _knobShown = false);
+        }
+      });
+    }
+  }
+
   @override
   void dispose() {
+    _knobHideTimer?.cancel();
     _listenedNavigation?.removeListener(_handleExternalProgress);
     _controller
       ..removeListener(_handleScrubStateChanged)
@@ -120,6 +155,7 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
       _externalFrameScheduled = false;
       if (mounted && !_controller.isScrubbing) {
         setState(() {});
+        _showKnob(scheduleHide: true);
       }
     });
   }
@@ -127,6 +163,14 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
   void _handleScrubStateChanged() {
     if (mounted) {
       setState(() {});
+    }
+    if (_controller.isScrubbing) {
+      _showKnob(scheduleHide: false);
+      if (!_pillInTree && mounted) {
+        setState(() => _pillInTree = true);
+      }
+    } else {
+      _showKnob(scheduleHide: true);
     }
     _reportScrubbing(_controller.isScrubbing);
   }
@@ -193,7 +237,9 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
                 : snapshot.positionLabel;
             final clamped = fraction.clamp(0.0, 1.0);
             final knobY = _edgeInset + clamped * travel;
-            final pillY = (clamped * (height - _pillHeight))
+            // The pill rides the knob's center 1:1 so knob and readout never
+            // drift apart; clamping only keeps it inside the strip.
+            final pillY = (_edgeInset + clamped * travel + _knobHeight / 2 - _pillHeight / 2)
                 .clamp(0.0, math.max(0.0, height - _pillHeight))
                 .toDouble();
             final gripHeight = _knobHeight + _grabHalo * 2;
@@ -205,15 +251,24 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
               children: <Widget>[
                 // Readout only: appears while the knob is held and deliberately
                 // ignores all pointers — pressing it does nothing.
-                if (scrubbing)
+                if (_pillInTree)
                   Positioned(
                     key: const ValueKey<String>('reader_scrub_pill_slot'),
                     right: _stripWidth + 4,
                     top: pillY,
                     child: IgnorePointer(
-                      child: _ScrubPill(
-                        key: const ValueKey<String>('reader_scrub_pill'),
-                        label: label,
+                      child: ScaleReveal(
+                        visible: scrubbing,
+                        animateOnMount: true,
+                        onHidden: () {
+                          if (mounted) {
+                            setState(() => _pillInTree = false);
+                          }
+                        },
+                        child: _ScrubPill(
+                          key: const ValueKey<String>('reader_scrub_pill'),
+                          label: label,
+                        ),
                       ),
                     ),
                   ),
@@ -271,16 +326,11 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
           onVerticalDragCancel: _controller.cancel,
           child: RepaintBoundary(
             child: Center(
-              child: Container(
-                width: _knobWidth,
-                height: _knobHeight,
-                decoration: BoxDecoration(
-                  color: appColors.textPrimary.withValues(
-                    alpha: scrubbing ? 1 : 0.65,
-                  ),
-                  borderRadius: BorderRadius.circular(
-                    _knobWidth / 2,
-                  ),
+              child: ScaleReveal(
+                visible: _knobShown,
+                child: LiquidGlassControl(
+                  size: const Size(_knobWidth, _knobHeight),
+                  child: const SizedBox.expand(),
                 ),
               ),
             ),

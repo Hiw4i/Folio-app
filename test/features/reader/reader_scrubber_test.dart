@@ -9,6 +9,9 @@ import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
 
 void main() {
+  final longBody = 'Quiet text.\n\n'
+      '${List<String>.filled(120, 'A calm line for scrolling.\n\n').join()}';
+
   DocumentEntry entry(String name, String path) => DocumentEntry(
     id: path,
     source: FileDocumentSource(path),
@@ -20,7 +23,7 @@ void main() {
 
   Future<void> openReader(
     WidgetTester tester, {
-    required String name,
+    String name = 'Scrub.txt',
     required String body,
   }) async {
     final path = '/documents/$name';
@@ -203,5 +206,95 @@ void main() {
       findsNothing,
     );
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the scrub pill rides exactly with the knob', (tester) async {
+    await openReader(tester, body: longBody);
+    final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
+    final gripCenter = tester.getCenter(grip);
+    final gesture = await tester.startGesture(gripCenter + const Offset(0, 20));
+    await gesture.moveBy(const Offset(0, 120));
+    await tester.pumpAndSettle();
+
+    final knob = tester.getCenter(grip);
+    final pill = tester.getCenter(find.byKey(const ValueKey<String>('reader_scrub_pill')));
+    // The material boxes share one travel now; the glass shell paints a few
+    // px of optical overflow, so allow that and nothing more.
+    expect(
+      (pill.dy - knob.dy).abs(),
+      lessThan(5.0),
+      reason: 'The pill must ride the knob: same travel, same speed.',
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the pill animates out instead of vanishing instantly', (
+    tester,
+  ) async {
+    await openReader(tester, body: longBody);
+    final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
+    final gripCenter = tester.getCenter(grip);
+    final gesture = await tester.startGesture(gripCenter + const Offset(0, 20));
+    await gesture.moveBy(const Offset(0, 40));
+    await tester.pumpAndSettle();
+    final pill = find.byKey(const ValueKey<String>('reader_scrub_pill'));
+    expect(pill, findsOneWidget);
+
+    await gesture.up();
+    await tester.pump();
+    // The reveal spring owns the exit: one frame after release the pill is
+    // still animating, not popped out of the tree.
+    expect(pill, findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(pill, findsNothing);
+  });
+
+  testWidgets('the knob fades a second after page scrolling stops', (
+    tester,
+  ) async {
+    await openReader(tester, body: longBody);
+    final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
+    double knobOpacity() {
+      final opacity = tester.widgetList<Opacity>(
+        find.descendant(of: grip, matching: find.byType(Opacity)),
+      ).first;
+      return opacity.opacity;
+    }
+
+    expect(knobOpacity(), greaterThan(0.5));
+    await tester.pump(const Duration(milliseconds: 1100));
+    await tester.pumpAndSettle();
+    expect(knobOpacity(), lessThan(0.05));
+
+    // Page scrolling brings it back.
+    await tester.drag(
+      find.byKey(const ValueKey<String>('reader_content')),
+      const Offset(0, -200),
+    );
+    await tester.pumpAndSettle();
+    expect(knobOpacity(), greaterThan(0.5));
+  });
+
+  testWidgets('the knob stays visible while the scrub is held', (tester) async {
+    await openReader(tester, body: longBody);
+    final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
+    double knobOpacity() {
+      final opacity = tester.widgetList<Opacity>(
+        find.descendant(of: grip, matching: find.byType(Opacity)),
+      ).first;
+      return opacity.opacity;
+    }
+
+    final gripCenter = tester.getCenter(grip);
+    final gesture = await tester.startGesture(gripCenter + const Offset(0, 20));
+    await gesture.moveBy(const Offset(0, 40));
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 1500));
+    await tester.pumpAndSettle();
+    // Held knob never times out, however long the pause inside the gesture.
+    expect(knobOpacity(), greaterThan(0.5));
+    await gesture.up();
+    await tester.pumpAndSettle();
   });
 }
