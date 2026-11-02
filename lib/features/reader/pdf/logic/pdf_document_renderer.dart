@@ -194,11 +194,12 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
   @override
   ReaderSearchSnapshot get searchState => ReaderSearchSnapshot(
     query: query,
-    // A query cannot produce a final result before the source exists, so
-    // waiting outranks the searching flag even when both are true.
+    // A query cannot produce a final answer while the source does not exist
+    // or the text searcher has not attached yet (prepared source, viewer not
+    // mounted) — and zero hits without a searcher is never "no matches".
     phase: query.trim().isEmpty
         ? ReaderSearchPhase.idle
-        : !sourceReady
+        : !sourceReady || (_textSearcher == null && hitCount == 0 && !isSearching)
         ? ReaderSearchPhase.waitingForSource
         : isSearching
         ? ReaderSearchPhase.searching

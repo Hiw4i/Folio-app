@@ -39,8 +39,9 @@ adb -s <device> shell "mkdir -p /storage/emulated/0/Android/data/com.example.fol
   tar xzf /data/local/tmp/corpus.tar.gz -C /storage/emulated/0/Android/data/com.example.folio/files/folio_corpus --strip-components=1"
 ```
 
-- В консоли ищется строка `PERF_RESULTS {json}` — это артефакт отчёта;
-  сохранить её в `docs/benchmarks/` рядом с отчётом прогона.
+- Артефакт отчёта: `perf_results.json` в каталоге рядом с корпусом на
+  устройстве (`adb pull`); дублируется в консоль построчно как
+  `PERF_RESULT_LINE <chunk>` — цельный JSON собрать конкатенацией чанков.
 - Файл измеряет: холодное открытие (готовность форматного view), окно
   FrameTiming 3 с после готовности (UI/raster p50/p95/p99, доля кадров сверх
   бюджетов 16,67/8,33 мс) и 3 повторных открытия того же файла.

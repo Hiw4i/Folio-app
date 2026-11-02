@@ -121,6 +121,18 @@ void main() {
       );
     });
 
+    test('a prepared source without an attached searcher is not "no matches"', () {
+      // Real window: the document ref exists but the viewer has not attached
+      // yet, so no search can have run — zero hits must read as waiting.
+      final renderer = PdfRendererStub()
+        ..pdfSourceReady = true
+        ..query = 'word';
+      expect(
+        renderer.searchState.phase,
+        ReaderSearchPhase.waitingForSource,
+      );
+    });
+
     test('an active search reports searching, a finished one completes', () {
       final renderer = PdfRendererStub()
         ..pdfSourceReady = true

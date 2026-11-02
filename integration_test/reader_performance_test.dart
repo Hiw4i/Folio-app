@@ -25,6 +25,8 @@ import 'package:folio/features/reader/data/document_content_source.dart';
 import 'package:folio/features/reader/logic/document_renderer.dart';
 import 'package:folio/features/reader/logic/reader_state.dart';
 import 'package:folio/features/reader/logic/renderer_lifecycle.dart';
+import 'package:folio/features/reader/widgets/bindings/reader_binding.dart';
+import 'package:folio/features/reader/widgets/bindings/text_reader_binding.dart';
 import 'package:folio/features/reader/office/widgets/office_document_platform_view.dart';
 import 'package:folio/features/reader/pdf/widgets/pdf_document_view.dart';
 
@@ -87,11 +89,31 @@ Future<void> main() async {
         'frames': _frameReport(window),
       });
     }
-    debugPrint('PERF_RESULTS ${jsonEncode(<String, Object?>{
+    // debugPrint wraps long lines and interleaves under load, which shreds
+    // the JSON; the report therefore also lands in a file the procedure can
+    // pull with adb (same directory as the corpus).
+    final report = <String, Object?>{
       'device': Platform.operatingSystemVersion,
       'results': results,
-    })}');
+    };
+    final encoded = jsonEncode(report);
+    try {
+      File('$corpusDir/../perf_results.json').writeAsStringSync(encoded);
+    } catch (error) {
+      debugPrint('PERF_REPORT_FILE_FAILED $error');
+    }
+    // Line-split so logcat/debugPrint wrapping can never shred the JSON.
+    for (final line in _splitForLog(encoded)) {
+      debugPrint('PERF_RESULT_LINE $line');
+    }
   });
+}
+
+/// Splits the JSON payload into stable, individually parseable chunks.
+Iterable<String> _splitForLog(String text, [int chunkSize = 900]) sync* {
+  for (var offset = 0; offset < text.length; offset += chunkSize) {
+    yield text.substring(offset, (offset + chunkSize).clamp(0, text.length));
+  }
 }
 
 /// The test runner reinstalls the app and wipes its external files dir, so
@@ -145,8 +167,22 @@ Future<_OpenResult> _measureOpen(WidgetTester tester, DocumentEntry entry, File 
     contentSource: const DeviceDocumentContentSource(),
   );
   final clock = Stopwatch()..start();
+  // The text binding owns the scroll resources its surface needs; the other
+  // formats mount their views directly.
+  ReaderBinding? binding;
+  if (renderer is TextDocumentRenderer) {
+    binding = TextReaderBinding(renderer);
+  }
   unawaited(renderer.open());
-  await tester.pumpWidget(_surface(renderer));
+  // Mount through a listener like production does: the Office platform view
+  // can only be created after `prepare` surfaces its session, and the
+  // renderer notification is what rebuilds the surface then.
+  await tester.pumpWidget(
+    AnimatedBuilder(
+      animation: renderer,
+      builder: (context, _) => _surface(renderer, binding),
+    ),
+  );
   final timeout = _openTimeout(entry.format);
   while (renderer.loadState == ReaderLoadState.loading && clock.elapsed < timeout) {
     await tester.pump(const Duration(milliseconds: 50));
@@ -160,6 +196,7 @@ Future<_OpenResult> _measureOpen(WidgetTester tester, DocumentEntry entry, File 
   return _OpenResult(clock.elapsedMilliseconds, status, () async {
     await tester.pumpWidget(const SizedBox.shrink());
     releaseDocumentRenderer(renderer);
+    binding?.dispose();
     await tester.pump(const Duration(milliseconds: 100));
   });
 }
@@ -167,8 +204,10 @@ Future<_OpenResult> _measureOpen(WidgetTester tester, DocumentEntry entry, File 
 /// Minimal real surface per format: the actual platform/compositor views the
 /// reader uses, without library chrome. This is what makes `ready` mean
 /// "first readable content" for PDF (viewer attached) and Office (WebView
-/// posted its ready event) instead of a background prepare step.
-Widget _surface(DocumentRenderer renderer) {
+/// posted its ready event) instead of a background prepare step. Text builds
+/// its real document view too — otherwise the frame window would measure an
+/// empty scene.
+Widget _surface(DocumentRenderer renderer, ReaderBinding? binding) {
   return Directionality(
     textDirection: TextDirection.ltr,
     child: MediaQuery.fromView(
@@ -183,11 +222,22 @@ Widget _surface(DocumentRenderer renderer) {
             renderer: renderer,
             onContentTap: () {},
           ),
+        TextDocumentRenderer() => binding!.buildSurface(
+            const ReaderSurfaceCallbacks(
+              onContentTap: _noop,
+              onReadingDrag: _noopDrag,
+              onSelectionChanged: _noopSelection,
+            ),
+          ),
         _ => const SizedBox.shrink(),
       },
     ),
   );
 }
+
+void _noop() {}
+void _noopDrag(double delta, bool canHide) {}
+void _noopSelection(bool active) {}
 
 Map<String, Object?> _frameReport(List<FrameTiming> frames) {
   if (frames.isEmpty) {

@@ -30,13 +30,18 @@ ReaderBinding createReaderBinding(DocumentRenderer renderer) {
 /// commands, no scrubber, and a plain loading surface — the shell's failure
 /// path takes over as soon as the renderer reports its unsupported state.
 final class UnsupportedReaderBinding implements ReaderBinding {
-  const UnsupportedReaderBinding(this.renderer);
+  UnsupportedReaderBinding(this.renderer);
 
   @override
   final UnsupportedDocumentRenderer renderer;
 
+  // One instance per binding: the contract forbids recreating owned
+  // navigation resources on repeated access.
+  late final _UnsupportedReaderNavigation _navigation =
+      _UnsupportedReaderNavigation(renderer);
+
   @override
-  ReaderNavigation get navigation => _UnsupportedReaderNavigation(renderer);
+  ReaderNavigation get navigation => _navigation;
 
   @override
   ReaderInteractionPolicy get interactionPolicy =>

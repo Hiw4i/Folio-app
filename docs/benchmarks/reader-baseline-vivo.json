@@ -1,0 +1,229 @@
+{
+  "device": "TP1A.220624.014",
+  "results": [
+    {
+      "file": "docx_big_images.docx",
+      "format": "docx",
+      "coldReadyMs": 1394,
+      "status": "ready",
+      "repeatReadyMs": [
+        765,
+        858,
+        791
+      ],
+      "frames": {
+        "count": 52,
+        "uiMs": {
+          "p50": 0.305,
+          "p95": 0.364,
+          "p99": 0.705
+        },
+        "rasterMs": {
+          "p50": 3.163,
+          "p95": 3.57,
+          "p99": 3.66
+        },
+        "overBudgetShare": {
+          "16.67": 0.0,
+          "8.33": 0.0
+        }
+      }
+    },
+    {
+      "file": "docx_long_text.docx",
+      "format": "docx",
+      "coldReadyMs": 732,
+      "status": "ready",
+      "repeatReadyMs": [
+        707,
+        708,
+        715
+      ],
+      "frames": {
+        "count": 52,
+        "uiMs": {
+          "p50": 0.294,
+          "p95": 0.336,
+          "p99": 0.354
+        },
+        "rasterMs": {
+          "p50": 3.002,
+          "p95": 3.271,
+          "p99": 3.316
+        },
+        "overBudgetShare": {
+          "16.67": 0.0,
+          "8.33": 0.0
+        }
+      }
+    },
+    {
+      "file": "pptx_many_slides.pptx",
+      "format": "pptx",
+      "coldReadyMs": 1323,
+      "status": "ready",
+      "repeatReadyMs": [
+        1041,
+        1057,
+        1058
+      ],
+      "frames": {
+        "count": 52,
+        "uiMs": {
+          "p50": 0.288,
+          "p95": 0.319,
+          "p99": 0.33
+        },
+        "rasterMs": {
+          "p50": 3.139,
+          "p95": 3.488,
+          "p99": 3.539
+        },
+        "overBudgetShare": {
+          "16.67": 0.0,
+          "8.33": 0.0
+        }
+      }
+    },
+    {
+      "file": "pptx_basic_theme.pptx",
+      "format": "pptx",
+      "coldReadyMs": 625,
+      "status": "ready",
+      "repeatReadyMs": [
+        633,
+        558,
+        574
+      ],
+      "frames": {
+        "count": 52,
+        "uiMs": {
+          "p50": 0.302,
+          "p95": 0.331,
+          "p99": 0.349
+        },
+        "rasterMs": {
+          "p50": 3.14,
+          "p95": 3.492,
+          "p99": 3.773
+        },
+        "overBudgetShare": {
+          "16.67": 0.0,
+          "8.33": 0.0
+        }
+      }
+    },
+    {
+      "file": "text_searchable_24p.pdf",
+      "format": "pdf",
+      "coldReadyMs": 402,
+      "status": "ready",
+      "repeatReadyMs": [
+        404,
+        404,
+        402
+      ],
+      "frames": {
+        "count": 52,
+        "uiMs": {
+          "p50": 0.324,
+          "p95": 1.622,
+          "p99": 4.551
+        },
+        "rasterMs": {
+          "p50": 3.177,
+          "p95": 3.556,
+          "p99": 3.567
+        },
+        "overBudgetShare": {
+          "16.67": 0.0,
+          "8.33": 0.0
+        }
+      }
+    },
+    {
+      "file": "image_only_4p.pdf",
+      "format": "pdf",
+      "coldReadyMs": 392,
+      "status": "ready",
+      "repeatReadyMs": [
+        393,
+        392,
+        392
+      ],
+      "frames": {
+        "count": 50,
+        "uiMs": {
+          "p50": 0.773,
+          "p95": 2.014,
+          "p99": 12.317
+        },
+        "rasterMs": {
+          "p50": 3.501,
+          "p95": 3.853,
+          "p99": 4.009
+        },
+        "overBudgetShare": {
+          "16.67": 0.0,
+          "8.33": 0.02
+        }
+      }
+    },
+    {
+      "file": "sample_long.txt",
+      "format": "txt",
+      "coldReadyMs": 323,
+      "status": "ready",
+      "repeatReadyMs": [
+        316,
+        317,
+        316
+      ],
+      "frames": {
+        "count": 52,
+        "uiMs": {
+          "p50": 0.744,
+          "p95": 0.989,
+          "p99": 1.08
+        },
+        "rasterMs": {
+          "p50": 3.138,
+          "p95": 3.318,
+          "p99": 3.453
+        },
+        "overBudgetShare": {
+          "16.67": 0.0,
+          "8.33": 0.0
+        }
+      }
+    },
+    {
+      "file": "sample_long.md",
+      "format": "markdown",
+      "coldReadyMs": 314,
+      "status": "ready",
+      "repeatReadyMs": [
+        316,
+        316,
+        316
+      ],
+      "frames": {
+        "count": 52,
+        "uiMs": {
+          "p50": 0.736,
+          "p95": 0.982,
+          "p99": 1.157
+        },
+        "rasterMs": {
+          "p50": 3.162,
+          "p95": 3.479,
+          "p99": 3.516
+        },
+        "overBudgetShare": {
+          "16.67": 0.0,
+          "8.33": 0.0
+        }
+      }
+    }
+  ]
+}

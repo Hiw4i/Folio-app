@@ -316,8 +316,9 @@ class _ReaderScreenState extends State<ReaderScreen>
     // native scroll messages nor programmatic navigation may alter chrome.
     // When scroll-driven navigation is disabled the panels ignore scrolling
     // entirely (both auto-hide on scroll down and reveal on scroll up);
-    // content taps always remain available as a manual toggle.
-    if (_renderer is PowerPointDocumentRenderer ||
+    // content taps always remain available as a manual toggle. The rule is
+    // the binding's, not a type check here.
+    if (!_binding.interactionPolicy.scrollControlsChrome ||
         _searchExpanded ||
         _menuOpen ||
         _exitOpen ||
@@ -865,5 +866,3 @@ class _LiquidChromeObject extends StatelessWidget {
   }
 }
 
-/// Transitional no-op navigation for renderers without a positional model.
-/// Task 6 replaces this with the binding factory's unsupported fallback.
