@@ -149,12 +149,14 @@ class _PdfDocumentViewState extends State<PdfDocumentView>
       limitRenderingCache: true,
       maxImageBytesCachedOnMemory: _renderCacheBudget,
       horizontalCacheExtent: 0.35,
-      // A deeper vertical cache keeps pages ahead rasterized during fast
-      // flings and scrub sweeps, so pages entering the viewport are already
-      // rendered instead of stalling on re-rendering. Memory stays bounded
-      // by maxImageBytesCachedOnMemory.
+      // Product rule (user, 2026-11-02): SMOOTH SCROLL FIRST. Pages that do
+      // not load in time are shown as blank white sheets (pdfrx paints them
+      // natively) and finish rendering calmly in the background — do NOT
+      // raise the prefetch extent to "help": deeper cache means more render
+      // and texture-upload work competing with the scroll itself. Memory
+      // stays bounded by maxImageBytesCachedOnMemory.
       // NB: scrollPhysics below is intentionally untouched.
-      verticalCacheExtent: 2.5,
+      verticalCacheExtent: 1.6,
       onePassRenderingSizeThreshold: 2400,
       textSelectionParams: PdfTextSelectionParams(
         enabled: true,
