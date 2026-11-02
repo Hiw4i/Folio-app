@@ -150,9 +150,11 @@ class _PdfDocumentViewState extends State<PdfDocumentView>
       maxImageBytesCachedOnMemory: _renderCacheBudget,
       horizontalCacheExtent: 0.35,
       // A deeper vertical cache keeps pages ahead rasterized during fast
-      // flings, so quick scrolling stalls less on re-rendering.
+      // flings and scrub sweeps, so pages entering the viewport are already
+      // rendered instead of stalling on re-rendering. Memory stays bounded
+      // by maxImageBytesCachedOnMemory.
       // NB: scrollPhysics below is intentionally untouched.
-      verticalCacheExtent: 1.6,
+      verticalCacheExtent: 2.5,
       onePassRenderingSizeThreshold: 2400,
       textSelectionParams: PdfTextSelectionParams(
         enabled: true,

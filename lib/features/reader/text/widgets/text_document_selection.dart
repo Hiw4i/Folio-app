@@ -505,7 +505,12 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection>
   }
 
   void _selectionChanged(SelectedContent? content) {
-    final active = content?.plainText.isNotEmpty ?? false;
+    // Flutter's region can transiently resolve EMPTY content while scrolling:
+    // lazy chunk rebuilds and off-screen recalculation report no text even
+    // though the endpoints remain. A real collapse drops the live ranges too,
+    // so the ranges — not the resolved string — are the source of truth.
+    final active =
+        (content?.plainText.isNotEmpty ?? false) || _selectionEndpointsRemain();
     if (_hasSelection == active) {
       return;
     }
@@ -519,7 +524,47 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection>
     _scheduleToolbarSync();
   }
 
+  /// Whether any selectable under the container still owns a non-collapsed
+  /// range. Scans live registrar state without building boxes.
+  bool _selectionEndpointsRemain() {
+    if (_delegate.selectsDocument) {
+      return true;
+    }
+    var found = false;
+    void visit(RenderObject object) {
+      if (found || object is! RenderParagraph) {
+        if (!found) object.visitChildren(visit);
+        return;
+      }
+      if (object.registrar
+          case final MultiSelectableSelectionContainerDelegate registrar) {
+        for (final selectable in registrar.selectables) {
+          if (!object.selectableBelongsToParagraph(selectable)) {
+            continue;
+          }
+          final range = selectable.getSelection();
+          if (range != null && range.startOffset != range.endOffset) {
+            found = true;
+            return;
+          }
+        }
+      }
+      object.visitChildren(visit);
+    }
+
+    if (_containerKey.currentContext?.findRenderObject()
+        case final RenderObject root?) {
+      visit(root);
+    }
+    return found;
+  }
+
   List<Rect> _visibleHighlightRects() {
+    // Plain scrolling without a selection is the hottest path in the reader:
+    // no walk, no boxes, no allocation.
+    if (!_hasSelection) {
+      return const <Rect>[];
+    }
     final paintBox = _visualKey.currentContext?.findRenderObject();
     final containerBox = _containerKey.currentContext?.findRenderObject();
     if (paintBox is! RenderBox ||
