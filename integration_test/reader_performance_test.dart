@@ -117,9 +117,14 @@ Future<void> main() async {
 Future<void> _waitForCorpus(String directory) async {
   final deadline = DateTime.now().add(const Duration(minutes: 3));
   while (DateTime.now().isBefore(deadline)) {
-    final marker = Directory(directory);
-    if (marker.existsSync() && marker.listSync().isNotEmpty) {
-      return;
+    try {
+      final marker = Directory(directory);
+      if (marker.existsSync() && marker.listSync().isNotEmpty) {
+        return;
+      }
+    } on FileSystemException {
+      // Android 17 denies even a stat on unreachable external paths; keep
+      // polling until the pushed corpus (or the timeout) settles it.
     }
     debugPrint('PERF_WAITING_FOR_CORPUS $directory');
     await Future<void>.delayed(const Duration(milliseconds: 500));
