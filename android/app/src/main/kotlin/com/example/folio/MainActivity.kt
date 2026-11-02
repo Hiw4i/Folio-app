@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.res.AssetFileDescriptor
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Environment
 import android.os.storage.StorageManager
 import android.provider.DocumentsContract
@@ -29,6 +30,34 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        requestSmoothestDisplayMode()
+    }
+
+    /// One UI classifies apps into frame-rate categories (normal=60Hz,
+    /// high=90Hz); without an explicit preferred mode the reader is capped at
+    /// 60fps while native viewers run at the panel's 120Hz. Pin the smoothest
+    /// mode that keeps the current resolution — even when it equals the active
+    /// one: the pin itself opts the surface out of the category throttling.
+    private fun requestSmoothestDisplayMode() {
+        val display = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            display
+        } else {
+            @Suppress("DEPRECATION") windowManager.defaultDisplay
+        } ?: return
+        val current = display.mode
+        val smoothest = display.supportedModes
+            .filter {
+                it.physicalWidth == current.physicalWidth &&
+                    it.physicalHeight == current.physicalHeight
+            }
+            .maxByOrNull { it.refreshRate } ?: return
+        window.attributes = window.attributes.apply {
+            preferredDisplayModeId = smoothest.modeId
+        }
+    }
+
     private companion object {
         const val STORAGE_CHANNEL = "folio/storage"
         const val INTENTS_CHANNEL = "folio/intents"
