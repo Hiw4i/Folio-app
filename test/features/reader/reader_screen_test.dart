@@ -11,6 +11,7 @@ import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
 import 'package:folio/features/reader/widgets/file_info_sheet.dart';
 import 'package:folio/shared/glass/widgets/adaptive_glass_foreground.dart';
+import 'package:folio/shared/settings/folio_settings.dart';
 import 'package:folio/shared/glass/widgets/liquid_glass_control.dart';
 import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
 import 'package:folio/shared/theme/folio_theme.dart';
@@ -36,10 +37,10 @@ void main() {
         tester.element(find.text('Remove from Recents')),
       ).opacity;
 
-  Future<void> openReader(WidgetTester tester) async {
+  Future<void> openReader(WidgetTester tester, {MemorySettingsStore? settings}) async {
     await tester.pumpWidget(
       FolioApp(
-        settingsStore: MemorySettingsStore(),
+        settingsStore: settings ?? MemorySettingsStore(),
         libraryRepository: InMemoryLibraryRepository(
           documents: <DocumentEntry>[document],
         ),
@@ -624,6 +625,127 @@ void main() {
     }
     await tester.pumpAndSettle();
     expect(find.text('1 of 1'), findsOneWidget);
+  });
+  testWidgets('grabbing the scrubber hides the liquid chrome, releasing restores it', (
+    tester,
+  ) async {
+    await openReader(tester);
+    final topChrome = find.byKey(const ValueKey<String>('reader_top_chrome'));
+    final topGlass = find.descendant(
+      of: topChrome,
+      matching: find.byType(LiquidGlassControl),
+    );
+    expect(topGlass, findsWidgets);
+
+    final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
+    final gripCenter = tester.getCenter(grip);
+    final gesture = await tester.startGesture(gripCenter + const Offset(0, 20));
+    await gesture.moveBy(const Offset(0, 25));
+    await tester.pumpAndSettle();
+    // Hidden chrome is fully unmounted: no blur cost while scrubbing.
+    expect(
+      find.descendant(of: topChrome, matching: find.byType(LiquidGlassControl)),
+      findsNothing,
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    // The scrub ended where the chrome was visible: it comes back.
+    expect(topGlass, findsWidgets);
+  });
+
+  testWidgets('scrubbing upward never re-shows the chrome mid-gesture', (
+    tester,
+  ) async {
+    await openReader(tester);
+    final topChrome = find.byKey(const ValueKey<String>('reader_top_chrome'));
+    final topGlass = find.descendant(
+      of: topChrome,
+      matching: find.byType(LiquidGlassControl),
+    );
+    expect(topGlass, findsWidgets);
+
+    final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
+    final gripCenter = tester.getCenter(grip);
+    final gesture = await tester.startGesture(gripCenter + const Offset(0, 20));
+    await gesture.moveBy(const Offset(0, 25));
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: topChrome, matching: find.byType(LiquidGlassControl)),
+      findsNothing,
+    );
+
+    // Scrubbing back up jumps the document upward: those scroll updates
+    // carry a "reveal on scroll up" intent that must not override the pin.
+    await gesture.moveBy(const Offset(0, -40));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 80));
+    expect(
+      find.descendant(of: topChrome, matching: find.byType(LiquidGlassControl)),
+      findsNothing,
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(topGlass, findsWidgets);
+  });
+
+  testWidgets('chrome hidden before a scrub stays hidden after release', (
+    tester,
+  ) async {
+    await openReader(tester);
+    final topChrome = find.byKey(const ValueKey<String>('reader_top_chrome'));
+    await tester.drag(
+      find.byKey(const ValueKey<String>('reader_content')),
+      const Offset(0, -320),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: topChrome, matching: find.byType(LiquidGlassControl)),
+      findsNothing,
+    );
+
+    final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
+    final gripCenter = tester.getCenter(grip);
+    final gesture = await tester.startGesture(gripCenter + const Offset(0, 20));
+    await gesture.moveBy(const Offset(0, 25));
+    await tester.pumpAndSettle();
+    await gesture.up();
+    await tester.pumpAndSettle();
+    // The scrub restores the previous state, and that state was hidden.
+    expect(
+      find.descendant(of: topChrome, matching: find.byType(LiquidGlassControl)),
+      findsNothing,
+    );
+  });
+
+  testWidgets('scrubber hides the chrome even when blur is enabled', (
+    tester,
+  ) async {
+    await openReader(
+      tester,
+      settings: MemorySettingsStore(const FolioSettings(blurEnabled: true)),
+    );
+    final topChrome = find.byKey(const ValueKey<String>('reader_top_chrome'));
+    final topGlass = find.descendant(
+      of: topChrome,
+      matching: find.byType(LiquidGlassControl),
+    );
+    expect(topGlass, findsWidgets);
+
+    final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
+    final gripCenter = tester.getCenter(grip);
+    final gesture = await tester.startGesture(gripCenter + const Offset(0, 20));
+    await gesture.moveBy(const Offset(0, 25));
+    await tester.pumpAndSettle();
+    // The hiding is uniform: it is not conditioned on the blur setting.
+    expect(
+      find.descendant(of: topChrome, matching: find.byType(LiquidGlassControl)),
+      findsNothing,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+    expect(topGlass, findsWidgets);
   });
 }
 

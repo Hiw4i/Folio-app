@@ -86,6 +86,12 @@ class _ReaderScreenState extends State<ReaderScreen>
   Timer? _searchDebounce;
   Timer? _initialLoadDelay;
   bool _chromeTarget = true;
+
+  /// True while the user holds the scrub knob: the liquid chrome is pinned
+  /// hidden (fully unmounted shells, no backdrop cost) regardless of the
+  /// blur setting, and released to the previous state on scrub end.
+  bool _scrubbing = false;
+  bool _chromeTargetBeforeScrub = true;
   bool _searchExpanded = false;
   bool _menuOpen = false;
   bool _exitOpen = false;
@@ -169,6 +175,11 @@ class _ReaderScreenState extends State<ReaderScreen>
   }
 
   void _setChromeTarget(bool visible) {
+    if (_scrubbing && visible) {
+      // While the knob is held, every other trigger (scroll intent, taps,
+      // seek-driven scroll updates) is inert; the scrub end restores state.
+      return;
+    }
     _scrollIntent.reset();
     if (_chromeTarget == visible) {
       return;
@@ -181,7 +192,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     if (!mounted) {
       return;
     }
-    final shouldShow = _chromeTarget || _searchExpanded;
+    final shouldShow = !_scrubbing && (_chromeTarget || _searchExpanded);
     if (shouldShow) {
       if (!_chromeController.isCompleted &&
           _chromeController.status != AnimationStatus.forward) {
@@ -457,6 +468,19 @@ class _ReaderScreenState extends State<ReaderScreen>
     );
   }
 
+  void _handleScrubbingChanged(bool scrubbing) {
+    if (_scrubbing == scrubbing) {
+      return;
+    }
+    _scrubbing = scrubbing;
+    if (scrubbing) {
+      _chromeTargetBeforeScrub = _chromeTarget;
+      _setChromeTarget(false);
+    } else {
+      _setChromeTarget(_chromeTargetBeforeScrub);
+    }
+  }
+
   @override
   void dispose() {
     _searchDebounce?.cancel();
@@ -555,7 +579,10 @@ class _ReaderScreenState extends State<ReaderScreen>
                         media.viewPadding.bottom +
                         120,
                     width: 110,
-                    child: ReaderScrubber(navigation: _binding.navigation),
+                    child: ReaderScrubber(
+                      navigation: _binding.navigation,
+                      onScrubStateChanged: _handleScrubbingChanged,
+                    ),
                   ),
                   Positioned(
                     left: 0,

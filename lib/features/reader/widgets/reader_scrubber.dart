@@ -25,9 +25,14 @@ import '../logic/reader_scrub_controller.dart';
 ///
 /// Short files (up to ~2 pages/screens) show nothing at all.
 class ReaderScrubber extends StatefulWidget {
-  const ReaderScrubber({required this.navigation, super.key});
+  const ReaderScrubber({required this.navigation, this.onScrubStateChanged, super.key});
 
   final ReaderNavigation navigation;
+
+  /// Fired when a scrub gesture starts or ends. The shell uses it to pin the
+  /// liquid chrome hidden while the knob is held (blur cost) and to restore
+  /// the previous state on release.
+  final ValueChanged<bool>? onScrubStateChanged;
 
   @override
   State<ReaderScrubber> createState() => _ReaderScrubberState();
@@ -46,6 +51,7 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
 
   late ReaderScrubController _controller;
   ReaderNavigation? _listenedNavigation;
+  bool _reportedScrubbing = false;
 
   /// Knob travel (px) from the last layout. Layout cache only: written
   /// during build without `setState`, read by the next drag update so the
@@ -82,6 +88,9 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
     _controller =
         ReaderScrubController(navigation)..addListener(_handleScrubStateChanged);
     navigation.addListener(_handleExternalProgress);
+    // A navigation swap mid-gesture rebuilds the idle controller; the shell
+    // must not stay pinned hidden.
+    _reportScrubbing(false);
   }
 
   @override
@@ -119,6 +128,15 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
     if (mounted) {
       setState(() {});
     }
+    _reportScrubbing(_controller.isScrubbing);
+  }
+
+  void _reportScrubbing(bool scrubbing) {
+    if (scrubbing == _reportedScrubbing) {
+      return;
+    }
+    _reportedScrubbing = scrubbing;
+    widget.onScrubStateChanged?.call(scrubbing);
   }
 
   double get _liveFraction => widget.navigation.snapshot.confirmedFraction ?? 0;

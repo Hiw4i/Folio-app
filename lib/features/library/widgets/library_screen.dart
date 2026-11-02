@@ -638,22 +638,26 @@ class _PermissionNotice extends StatelessWidget {
               padding: EdgeInsets.fromLTRB(
                 AppSpacing.lg,
                 AppSpacing.lg,
-                AppSpacing.xs,
+                AppSpacing.lg,
                 AppSpacing.sm,
               ),
               child: FolioStatusView(
                 title: 'Allow file access',
                 message: 'Folio needs access to find documents stored on this device. You can still open individual files from other apps.',
-                messagePadding: EdgeInsets.only(right: AppSpacing.md),
                 textAlign: TextAlign.start,
                 crossAxisAlignment: CrossAxisAlignment.start,
-                action: Transform.translate(
-                  offset: const Offset(-40, 0),
-                  child: LiquidGlassButton(
-                    label: 'Open settings',
-                    width: 142,
-                    height: 50,
-                    onTap: onOpenSettings,
+                // The status column start-aligns its children and is only as
+                // wide as its longest line; a full-width slot is what makes
+                // the action center on the CARD rather than on that column.
+                action: SizedBox(
+                  width: double.infinity,
+                  child: Center(
+                    child: LiquidGlassButton(
+                      label: 'Open settings',
+                      width: 142,
+                      height: 50,
+                      onTap: onOpenSettings,
+                    ),
                   ),
                 ),
               ),
