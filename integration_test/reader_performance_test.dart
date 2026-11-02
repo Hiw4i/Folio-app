@@ -64,10 +64,14 @@ Duration _openTimeout(DocumentFormat format) =>
 Future<void> main() async {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   const corpusDir = String.fromEnvironment('FOLIO_PERF_CORPUS_DIR');
-  assert(
-    corpusDir.isNotEmpty,
-    'Pass --dart-define=FOLIO_PERF_CORPUS_DIR=/path with the pushed corpus (see tools/reader_benchmarks/README.md).',
-  );
+  if (corpusDir.isEmpty) {
+    // A stripped assert would fail soft in profile: loud guard instead.
+    debugPrint(
+      'PERF_FATAL: pass --dart-define=FOLIO_PERF_CORPUS_DIR=/path with the pushed corpus '
+      '(see tools/reader_benchmarks/README.md)',
+    );
+    return;
+  }
 
   testWidgets('reader open latency and frame windows per corpus file', (
     tester,

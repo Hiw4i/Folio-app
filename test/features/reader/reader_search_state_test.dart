@@ -133,6 +133,10 @@ void main() {
       );
     });
 
+    // Stub note: the stub's _textSearcher is always null (it is private and
+    // set by attachViewer), so "searcher attached + finished + 0 hits →
+    // complete" is represented here via stubHits > 0. With a live searcher
+    // the waiting clause (`_textSearcher == null`) cannot fire.
     test('an active search reports searching, a finished one completes', () {
       final renderer = PdfRendererStub()
         ..pdfSourceReady = true

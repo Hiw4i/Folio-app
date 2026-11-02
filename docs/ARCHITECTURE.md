@@ -200,5 +200,6 @@ profile; тег исходной точки `reader-baseline-20261101`). Пор�
 | `docs/benchmarks/protocol.md` | протокол сравнения и пороги регрессии |
 | `docs/benchmarks/reader-unified-results.md` (+ JSON, PNG рядом) | фактические замены до/после, снимок реального окна |
 | `docs/benchmarks/reader-baseline.md` | исходная точка (коммит, окружение, что покрыто) |
+| `docs/benchmarks/office-engine-comparison.md` | скрининг кандидатов движков Office и статус сравнения |
 | `tools/reader_benchmarks/README.md` | точные команды бенчмарков |
 | `docs/superpowers/plans/` | исторические планы исполнения и их статус |

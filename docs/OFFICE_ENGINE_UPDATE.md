@@ -92,7 +92,7 @@ minified file or mix it with an adapter from another revision.
 `tools/office_renderer_tests` generates its own DOCX/PPTX packages and runs the actual
 bundled scripts in offline Chromium. It includes DOM, geometry, pixel, resource-lifetime,
 cache, failure-path and Unicode tests. Test assets contain no private documents or fonts.
-The 43-test run passed; see `office-engine-test-results.txt` and validation JSON.
+The 43-test run passed (raw output removed during the 2026-11-02 docs consolidation).
 
 The harness injects local scripts and CSS into an offline page and stubs only the source
 file transport/Flutter bridge. It does NOT emulate Android WebView, WebViewAssetLoader,
