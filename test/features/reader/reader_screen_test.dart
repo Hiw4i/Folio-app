@@ -474,7 +474,7 @@ void main() {
     final titleSize = tester.getSize(
       find.byKey(const ValueKey<String>('reader_title_glass')),
     );
-    expect(titleSize.height, 42);
+    expect(titleSize.height, 36);
     expect(titleSize.width, lessThan(180));
     expect(
       find.descendant(

@@ -94,7 +94,7 @@ class ReaderProgressPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LiquidGlassControl(
-      size: const Size(62, 38),
+      size: const Size(62, 32),
       child: Center(
         child: AdaptiveGlassText(label, style: AppTextStyles.smallDim(context)),
       ),

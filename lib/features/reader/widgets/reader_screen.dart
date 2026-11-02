@@ -778,6 +778,9 @@ class _ReaderScreenState extends State<ReaderScreen>
 /// Horizontal padding inside the reader title pill (18pt each side).
 const double _titlePadding = 36;
 
+/// Height of the reader title pill.
+const double _titlePillHeight = 36;
+
 /// Shared truncation + measurement cache for the reader title pill: it runs
 /// inside a `LayoutBuilder` on every chrome tick/resize and binary-searches
 /// the truncation point, so uncached `TextPainter.layout` would allocate
@@ -842,7 +845,7 @@ class _TopChromeContent extends StatelessWidget {
               return Align(
                 child: _LiquidChromeObject(
                   key: const ValueKey<String>('reader_title_glass'),
-                  size: Size(titleWidth, 42),
+                  size: Size(titleWidth, _titlePillHeight),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                       horizontal: _titlePadding / 2,
