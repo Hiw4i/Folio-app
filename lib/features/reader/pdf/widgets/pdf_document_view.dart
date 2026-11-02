@@ -243,7 +243,13 @@ class _PdfDocumentViewState extends State<PdfDocumentView>
             widget.renderer.paintSearchMatches(canvas, rect, page),
       ],
       behaviorControlParams: const PdfViewerBehaviorControlParams(
-        loadPageDimensionsOnDemand: true,
+        // Flutter 3.47 runs Dart on the platform thread (merged threading) --
+        // any synchronous FFI here freezes touch handling. On-demand page
+        // measurement did exactly that: every page entering the cache extent
+        // ran FPDF_LoadPage inline, blocking the scroll for tens of ms
+        // (gfxinfo p90 97ms). Measure all pages at open instead: for local
+        // files the one-time open cost is small and scroll never stalls.
+        loadPageDimensionsOnDemand: false,
         // Shorter trailing delay so pages following a fast fling become
         // available sooner instead of visibly stalling mid-scroll.
         trailingPageLoadingDelay: Duration(milliseconds: 30),
