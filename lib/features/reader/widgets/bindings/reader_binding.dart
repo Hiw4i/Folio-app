@@ -48,6 +48,15 @@ abstract interface class ReaderBinding {
 
   ReaderInteractionPolicy get interactionPolicy;
 
+  /// Whether the format surface currently hosts its own overlay that must
+  /// consume Back presses and hide the reading chrome (the PPTX slide
+  /// overview). Formats without document-hosted overlays report false.
+  bool get hasSurfaceOverlay;
+
+  /// Closes that overlay. Returns true when something was actually closed,
+  /// so the shell can consume the Back press.
+  bool closeSurfaceOverlay();
+
   /// Builds the format surface wired to [callbacks]. Called once per screen
   /// mounting; repeated builds must not recreate owned resources.
   Widget buildSurface(ReaderSurfaceCallbacks callbacks);

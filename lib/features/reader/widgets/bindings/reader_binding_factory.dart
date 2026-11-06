@@ -48,6 +48,12 @@ final class UnsupportedReaderBinding implements ReaderBinding {
       const ReaderInteractionPolicy(scrollControlsChrome: false);
 
   @override
+  bool get hasSurfaceOverlay => false;
+
+  @override
+  bool closeSurfaceOverlay() => false;
+
+  @override
   Widget buildSurface(ReaderSurfaceCallbacks callbacks) {
     return ReaderLoadingView(document: renderer.document);
   }

@@ -26,6 +26,12 @@ final class PdfReaderBinding implements ReaderBinding {
       const ReaderInteractionPolicy(scrollControlsChrome: true);
 
   @override
+  bool get hasSurfaceOverlay => false;
+
+  @override
+  bool closeSurfaceOverlay() => false;
+
+  @override
   Widget buildSurface(ReaderSurfaceCallbacks callbacks) {
     // Progressive loading: as soon as the document reference exists the
     // viewer mounts and streams pages; its internal banner (same unified

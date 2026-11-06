@@ -98,8 +98,12 @@ body[data-format="docx"] .docx-wrapper > section.docx[data-folio-page] {
 }
 
 body[data-format="pptx"] #viewport {
-  /* Слайды не прокручиваются: в раскладке живёт ровно один кадр,
-     смена слайда — мгновенная замена отображаемого кадра (showSlide). */
+  /* Слайды не прокручиваются: в раскладке живёт ровно один кадр, смена
+     слайда — мгновенная замена отображаемого кадра (showSlide). В покое пан
+     запрещён: свайпы читает office.js, а auto позволил бы композитору
+     захватывать drag'и под нативный скролл и гасить их pointercancel'ем.
+     Пока слайд увеличен, reader-motion переключает action на auto — тогда
+     пан одним пальцем уходит нативному зуму WebView. */
   overflow: hidden;
   touch-action: pinch-zoom;
   padding: 74px 0 108px;
@@ -226,4 +230,144 @@ body[data-format="pptx"] #document svg { -webkit-user-select: none; user-select:
   overflow: visible;
   z-index: 2147483646;
   pointer-events: none;
+}
+
+/* === Обзор слайдов (только PPTX): лента миниатюр у нижнего края. === */
+
+/* Под выборочными ручками (2147483647), но над всем остальным. */
+#folio-overview {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+  z-index: 2147483640;
+  border-radius: 18px;
+  /* Тон стекла читалки: фон AppColors.background с размытием документа. */
+  background: rgba(13, 14, 16, 0.78);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
+  font-family: Inter, system-ui, sans-serif;
+  color: rgba(244, 243, 239, 0.9);
+  -webkit-user-select: none;
+  user-select: none;
+  opacity: 0;
+  /* Закрытая позиция ленты. 28px дублированы в office.js
+     (overviewTravelGap) — менять только синхронно. */
+  transform: translateY(calc(100% + 28px));
+  transition: transform 300ms cubic-bezier(0.16, 1, 0.3, 1),
+    opacity 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+#folio-overview[hidden] {
+  display: none;
+}
+
+#folio-overview.is-open {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+#folio-overview .folio-overview-grid {
+  /* Скролл-контейнер остаётся (motion двигает его через scrollTo), но
+     нативные жесты выключены: скролл, резинка и флинт целиком в JS
+     (reader-motion, ownsScroll). */
+  overflow-x: auto;
+  overflow-y: hidden;
+  touch-action: none;
+  border-radius: inherit;
+  padding: 10px;
+  scrollbar-width: none;
+}
+
+#folio-overview .folio-overview-grid::-webkit-scrollbar { display: none; }
+
+/* Трек — цель резинового отскока: трансформ двигает карточки внутри
+   клипящего скроллера, не вылезая за скруглённую рамку ленты. */
+#folio-overview .folio-overview-track {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: max-content;
+}
+
+#folio-overview .folio-overview-card {
+  appearance: none;
+  flex: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  /* Горизонтальный скролл ленты остаётся нативным, двойной тап не зумит. */
+  touch-action: manipulation;
+}
+
+#folio-overview .folio-overview-sheet {
+  position: relative;
+  display: block;
+  height: 68px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+
+#folio-overview .folio-overview-card:active .folio-overview-sheet { transform: scale(0.96); }
+
+#folio-overview .folio-overview-card.is-active .folio-overview-sheet {
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35), 0 0 0 2px #d7dee8;
+}
+
+/* Клон слайда внутри карточки: авторский размер, вписанный по высоте ленты.
+   Кадровые правила (.folio-slide-frame > .slide) на клон не действуют: без
+   явного цвета унаследованный кремовый текст исчезает на белом листе. */
+#folio-overview .folio-overview-sheet > .slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  transform-origin: top left;
+  color: #000;
+}
+
+/* То же для кадровой типографики текстовых блоков. */
+#folio-overview .folio-overview-sheet .text-block {
+  white-space: pre-wrap;
+  overflow-wrap: normal;
+}
+
+#folio-overview .folio-overview-index {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  min-width: 17px;
+  padding: 1px 5px;
+  border-radius: 6px;
+  background: rgba(11, 12, 14, 0.72);
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
+  color: rgba(244, 243, 239, 0.92);
+  font-variant-numeric: tabular-nums;
+}
+
+#folio-overview .folio-overview-card.is-active .folio-overview-index {
+  background: #d7dee8;
+  color: #161a20;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #folio-overview,
+  #folio-overview .folio-overview-sheet {
+    transition: none;
+  }
 }

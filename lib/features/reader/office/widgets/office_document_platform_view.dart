@@ -265,6 +265,9 @@ class _MethodChannelOfficeView implements OfficeViewCommands {
     <String, Object?>{'index': zeroBasedIndex},
   );
 
+  @override
+  Future<void> closeOverview() => _invoke('closeOverview');
+
   Future<void> _invoke(String method, [Map<String, Object?>? arguments]) async {
     if (_disposed) {
       return;

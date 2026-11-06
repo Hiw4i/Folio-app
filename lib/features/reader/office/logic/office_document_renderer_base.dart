@@ -65,6 +65,11 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
   int positionCount = 0;
   bool? searchableTextAvailable;
 
+  /// Whether the WebView-hosted PPTX slide overview is open. Word never
+  /// posts the event; the flag lives on the base so the shell has one
+  /// Back/chrome contract for document-hosted overlays.
+  bool slideOverviewOpen = false;
+
   /// The observed failure of the last search command, cleared by the next
   /// search, open or close. A failed bridge command must never read as
   /// zero results.
@@ -132,6 +137,7 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     currentPosition = 1;
     positionCount = 0;
     searchableTextAvailable = null;
+    slideOverviewOpen = false;
     notifyListeners();
     if (previous != null) {
       await closeReaderResource(previous.close);
@@ -243,6 +249,9 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
         _viewReady = true;
         loadState = ReaderLoadState.ready;
         failure = null;
+        // A fresh page boot can never have the overview open: keep the Dart
+        // mirror in sync even if a reload path appears later.
+        slideOverviewOpen = false;
         positionCount = (event['count'] as num?)?.toInt() ?? positionCount;
         searchableTextAvailable = event['hasText'] as bool?;
         currentPosition = currentPosition.clamp(
@@ -274,8 +283,15 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
         hitCount = (event['count'] as num?)?.toInt() ?? 0;
         activeHitIndex = (event['active'] as num?)?.toInt() ?? -1;
         notifyListeners();
+      case 'overview':
+        final open = event['open'] as bool? ?? false;
+        if (open != slideOverviewOpen) {
+          slideOverviewOpen = open;
+          notifyListeners();
+        }
       case 'error':
         loadState = ReaderLoadState.failed;
+        slideOverviewOpen = false;
         failure = ReaderFailure(
           kind: ReaderFailureKind.unreadable,
           title: 'Could not render ${document.format.extension.toUpperCase()}',
@@ -327,6 +343,16 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     if (!_disposed && _viewReady && hitCount > 0 && view != null) {
       unawaited(_runViewCommand(view, view.showPreviousHit));
     }
+  }
+
+  /// Closes the slide overview from the Flutter side (system Back). The
+  /// confirmed closed state arrives through the `overview` event.
+  void closeOverview() {
+    final view = _view;
+    if (_disposed || !_viewReady || view == null) {
+      return;
+    }
+    unawaited(_runViewCommand(view, view.closeOverview));
   }
 
   double get pageFraction => positionCount <= 1
@@ -470,6 +496,7 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     _cancelReadyWatchdog();
     _view = null;
     _viewReady = false;
+    slideOverviewOpen = false;
     searchFailure = null;
     final session = _session;
     _session = null;
@@ -487,6 +514,7 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     _pendingSeekFraction = null;
     _cancelReadyWatchdog();
     _view = null;
+    slideOverviewOpen = false;
     final session = _session;
     _session = null;
     if (session != null) {

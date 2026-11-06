@@ -6,7 +6,7 @@ import 'package:flutter/widgets.dart';
 class LiquidShapeTokens {
   const LiquidShapeTokens({
     this.pressGrowth = 0.0,
-    this.pressPadding = 3.0,
+    this.pressPadding = 4.5,
     this.travelGrowth = 0.09,
     this.travelStretch = 0.34,
   });
@@ -69,7 +69,7 @@ abstract final class LiquidShape {
     return _limitOffset(displacement * follow + inertial, maximum);
   }
 
-  static double contentScale(double press) => 1 + press.clamp(0.0, 1.0) * 0.018;
+  static double contentScale(double press) => 1 + press.clamp(0.0, 1.0) * 0.040;
 
   /// The material leads the animation and keeps a small amount of spring
   /// overshoot. This curve is shared by every morphing liquid control.

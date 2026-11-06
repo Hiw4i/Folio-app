@@ -600,7 +600,7 @@
     window.addEventListener('focus', resume);
     window.visualViewport?.addEventListener('resize', schedule);
     window.visualViewport?.addEventListener('scroll', schedule);
-    return { isActive, selectAll, clear, copyText, hitText, cancelDrag: endDrag, refresh: schedule, dispose };
+    return { isActive, selectAll, clear, copyText, hitText, cancelDrag: endDrag, dispose };
   }
   window.FolioReaderSelection = { create };
 })();

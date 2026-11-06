@@ -53,6 +53,9 @@ class _GatedOfficeView implements OfficeViewCommands {
 
   @override
   Future<void> showPreviousHit() async {}
+
+  @override
+  Future<void> closeOverview() async {}
 }
 
 class _CountingCloseGateway implements OfficeDocumentGateway {

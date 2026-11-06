@@ -140,4 +140,8 @@ abstract interface class OfficeViewCommands {
   /// [goToPosition], it never runs the smooth `scrollIntoView` animation,
   /// so dragging the scrub thumb jumps as fast as in other formats.
   Future<void> goToPositionInstant(int zeroBasedIndex);
+
+  /// Closes the WebView-hosted PPTX slide overview (system Back). The
+  /// document view ignores the command for formats without the overview.
+  Future<void> closeOverview();
 }

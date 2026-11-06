@@ -127,6 +127,10 @@ internal class OfficePlatformView(
                     evaluate("window.FolioOffice?.goToPosition($index, false);")
                     result.success(null)
                 }
+                "closeOverview" -> {
+                    evaluate("window.FolioOffice?.closeOverview();")
+                    result.success(null)
+                }
                 "copySelection" -> copySelection(result)
                 "selectAll" -> {
                     evaluate("window.FolioSelection?.selectAll();")

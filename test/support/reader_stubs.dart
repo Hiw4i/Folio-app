@@ -126,4 +126,7 @@ class RecordingOfficeView implements OfficeViewCommands {
   @override
   Future<void> goToPositionInstant(int zeroBasedIndex) async =>
       calls.add('goToPositionInstant:$zeroBasedIndex');
+
+  @override
+  Future<void> closeOverview() async => calls.add('closeOverview');
 }

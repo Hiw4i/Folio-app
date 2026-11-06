@@ -96,6 +96,12 @@ class _ReaderScreenState extends State<ReaderScreen>
   bool _menuOpen = false;
   bool _exitOpen = false;
   bool _infoOpen = false;
+
+  /// Mirrors the document surface's own overlay (the PPTX slide overview).
+  /// While it is open the chrome is pinned hidden and Back closes the
+  /// overlay instead of leaving the reader.
+  bool _surfaceOverlayOpen = false;
+  bool _chromeTargetBeforeOverlay = true;
   int? _contentPointer;
   Offset? _contentPointerOrigin;
   bool _contentPointerMoved = false;
@@ -192,7 +198,11 @@ class _ReaderScreenState extends State<ReaderScreen>
     if (!mounted) {
       return;
     }
-    final shouldShow = !_scrubbing && (_chromeTarget || _searchExpanded);
+    // The surface overlay (PPTX slide overview) covers the whole screen, so
+    // even an expanded search must not keep the chrome floating above it.
+    final shouldShow = !_scrubbing &&
+        !_surfaceOverlayOpen &&
+        (_chromeTarget || _searchExpanded);
     if (shouldShow) {
       if (!_chromeController.isCompleted &&
           _chromeController.status != AnimationStatus.forward) {
@@ -215,8 +225,25 @@ class _ReaderScreenState extends State<ReaderScreen>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _binding.navigation.revalidate();
+        _syncSurfaceOverlay();
       }
     });
+  }
+
+  /// Follows the surface's document-hosted overlay: opening it pins the
+  /// chrome hidden, closing restores the pre-overlay chrome target.
+  void _syncSurfaceOverlay() {
+    final open = _binding.hasSurfaceOverlay;
+    if (open == _surfaceOverlayOpen) {
+      return;
+    }
+    setState(() => _surfaceOverlayOpen = open);
+    if (open) {
+      _chromeTargetBeforeOverlay = _chromeTarget;
+      _setChromeTarget(false);
+    } else {
+      _setChromeTarget(_chromeTargetBeforeOverlay);
+    }
   }
 
   void _searchChanged(String query) {
@@ -254,6 +281,9 @@ class _ReaderScreenState extends State<ReaderScreen>
     // File info is a separate modal route. Keep the reader locked until its
     // reverse transition and backdrop finish, including repeated Back taps.
     if (_infoOpen) {
+      return;
+    }
+    if (_binding.closeSurfaceOverlay()) {
       return;
     }
     if (_exitOpen) {
@@ -502,9 +532,12 @@ class _ReaderScreenState extends State<ReaderScreen>
         ? Duration.zero
         : AppDurations.fastest;
     return PopScope<void>(
-      canPop: !_menuOpen && !_exitOpen && !_infoOpen,
+      canPop: !_menuOpen && !_exitOpen && !_infoOpen && !_surfaceOverlayOpen,
       onPopInvokedWithResult: (didPop, result) {
         if (didPop || _infoOpen) {
+          return;
+        }
+        if (_binding.closeSurfaceOverlay()) {
           return;
         }
         if (_exitOpen) {

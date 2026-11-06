@@ -98,6 +98,64 @@ void main() {
     _expectChrome(tester, visible: true);
   });
 
+  testWidgets('PPTX overview pins the chrome hidden; closing restores it', (
+    tester,
+  ) async {
+    final renderer = await _pumpReader(tester);
+    renderer.handleViewEvent(<Object?, Object?>{
+      'type': 'overview', 'open': true,
+    });
+    await tester.pumpAndSettle();
+    _expectChrome(tester, visible: false);
+
+    renderer.handleViewEvent(<Object?, Object?>{
+      'type': 'overview', 'open': false,
+    });
+    await tester.pumpAndSettle();
+    _expectChrome(tester, visible: true);
+  });
+
+  testWidgets('an expanded search cannot keep chrome above the overview', (
+    tester,
+  ) async {
+    final renderer = await _pumpReader(tester);
+    tester.state<LiquidSearchControlState>(
+      find.byType(LiquidSearchControl),
+    ).open();
+    await tester.pumpAndSettle();
+    _expectChrome(tester, visible: true);
+    renderer.handleViewEvent(<Object?, Object?>{
+      'type': 'overview', 'open': true,
+    });
+    await tester.pumpAndSettle();
+    _expectChrome(tester, visible: false);
+    renderer.handleViewEvent(<Object?, Object?>{
+      'type': 'overview', 'open': false,
+    });
+    await tester.pumpAndSettle();
+    // The pre-overview state had the search expanded: it comes back.
+    _expectChrome(tester, visible: true);
+  });
+
+  testWidgets('system Back closes the overview instead of leaving the reader', (
+    tester,
+  ) async {
+    final renderer = await _pumpReader(tester);
+    renderer.handleViewEvent(<Object?, Object?>{
+      'type': 'overview', 'open': true,
+    });
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('reader_surface')),
+      findsOneWidget,
+    );
+    // The close command went out; the flag stays with the bridge until the
+    // `overview` event completes the round trip.
+    expect(renderer.slideOverviewOpen, isTrue);
+  });
+
   testWidgets('PPTX controls preserve visibility through a viewport rotation', (
     tester,
   ) async {

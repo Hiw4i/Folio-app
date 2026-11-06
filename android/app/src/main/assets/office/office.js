@@ -146,7 +146,277 @@
     target.classList.add('is-active');
     state.position = next;
     state.count = pages.length;
+    if (overview.built) syncOverviewActive();
     post('position', { current: next + 1, count: pages.length });
+  }
+
+  // Обзор слайдов (свайп вверх): лента миниатюр у нижнего края, прокручивается
+  // по горизонтали и живёт внутри WebView, чтобы карточки были точными клонами
+  // настоящих слайдов. Раскрытие следует за пальцем, у краёв скролла —
+  // резиновый отскок.
+  const overview = {
+    root: null, grid: null, track: null, cards: [],
+    built: false, open: false, closeTimer: 0,
+    observer: null, drag: null, motion: null,
+  };
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const overviewDragSlop = 12;
+  const overviewOpenVelocity = 600;
+  // Зазор за нижним краем в закрытом состоянии ленты. Должен совпадать с
+  // translateY(calc(100% + 28px)) в office.css — иначе первые кадры drag'а
+  // дёрнутся. 12px нижнего отступа + запас на тень ленты.
+  const overviewTravelGap = 28;
+
+  function ensureOverview() {
+    if (overview.built || format !== 'pptx' || state.disposed) return;
+    const layer = document.createElement('div');
+    layer.id = 'folio-overview';
+    layer.hidden = true;
+    const grid = document.createElement('div');
+    grid.className = 'folio-overview-grid';
+    const track = document.createElement('div');
+    track.className = 'folio-overview-track';
+    overview.cards = state.pages.map((page, index) => {
+      const slide = page.querySelector(':scope > .slide');
+      // Авторский размер кадра до вписывания: карточки масштабируются от него.
+      const width = slide ? numericStyle(slide, 'width', 960) : 960;
+      const height = slide ? numericStyle(slide, 'height', 540) : 540;
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'folio-overview-card';
+      card.setAttribute('aria-label', `Slide ${index + 1}`);
+      const sheet = document.createElement('div');
+      sheet.className = 'folio-overview-sheet';
+      sheet.style.aspectRatio = `${width} / ${height}`;
+      if (slide) {
+        const clone = slide.cloneNode(true);
+        // Клон — навигационная миниатюра: ссылки убираются, чтобы тап по ним
+        // доходил до карточки (общий обработчик гасит клики по <a>), а пометки
+        // поиска не замирали в карточках навсегда.
+        clone.querySelectorAll('a').forEach((anchor) => {
+          anchor.replaceWith(...anchor.childNodes);
+        });
+        clone.querySelectorAll('mark[data-folio-search]').forEach((mark) => {
+          mark.replaceWith(...mark.childNodes);
+        });
+        clone.style.left = '0px';
+        clone.style.top = '0px';
+        clone.style.boxShadow = 'none';
+        sheet.appendChild(clone);
+      }
+      const label = document.createElement('span');
+      label.className = 'folio-overview-index';
+      label.textContent = String(index + 1);
+      sheet.appendChild(label);
+      card.append(sheet);
+      card.addEventListener('click', () => {
+        if (!overview.open || state.disposed) return;
+        // Лента остаётся открытой: по ней можно щёлкать слайд за слайдом.
+        showSlide(index);
+      });
+      track.appendChild(card);
+      return { card, sheet, clone: sheet.firstElementChild, height };
+    });
+    grid.appendChild(track);
+    layer.append(grid);
+    document.body.appendChild(layer);
+    overview.root = layer;
+    overview.grid = grid;
+    overview.track = track;
+    overview.built = true;
+    // Скролл, резинка и флинт ленты — общий модуль физики читалки: нативный
+    // скроллер выключен (touch-action: none), инерция непрерывно переходит
+    // в резинку у краёв без детекции прибытия.
+    overview.motion = window.FolioReaderMotion.create({
+      viewport: grid,
+      content: track,
+      horizontal: true,
+      ownsScroll: true,
+      maxOverscroll: 72,
+      canStart: () => overview.open && state.ready && !state.disposed,
+      cancelTap: () => {},
+    });
+    bindOverviewDismissal();
+    // Реагируем на смену размеров вьюпорта. Измерение переносится на следующий
+    // кадр: первое уведомление наблюдателя может прийти раньше, чем раскладка
+    // ленты устоится.
+    overview.observer = new ResizeObserver(() => requestAnimationFrame(layoutOverview));
+    overview.observer.observe(grid);
+  }
+
+  function layoutOverview() {
+    if (!overview.built || !overview.cards.length) return;
+    const boxHeight = overview.cards[0].sheet.clientHeight;
+    if (boxHeight <= 0) return;
+    for (const item of overview.cards) {
+      if (item.clone) item.clone.style.transform = `scale(${boxHeight / item.height})`;
+    }
+  }
+
+  function syncOverviewActive() {
+    overview.cards.forEach((item, index) => {
+      item.card.classList.toggle('is-active', index === state.position);
+    });
+    if (!overview.open) return;
+    // Лента следует за позицией: активная карточка держится по центру.
+    overview.cards[state.position]?.card.scrollIntoView({
+      inline: 'center',
+      block: 'nearest',
+      behavior: reducedMotion.matches ? 'instant' : 'smooth',
+    });
+  }
+
+  function openOverview() {
+    if (overview.open || overview.drag || !state.ready || state.disposed) return;
+    selection.clear(); // Поиск/выделение не должны жить под лентой обзора.
+    ensureOverview();
+    syncOverviewActive();
+    const layer = overview.root;
+    clearTimeout(overview.closeTimer);
+    overview.closeTimer = 0;
+    layer.hidden = false;
+    // Инлайновые transform/opacity могли остаться от незавершённого закрытия
+    // (settle-close держит их до таймера) — они перебили бы .is-open.
+    layer.style.transform = '';
+    layer.style.opacity = '';
+    layer.style.pointerEvents = '';
+    // Прыжок к текущему слайду до появления ленты, чтобы не было видно скролла.
+    const active = overview.cards[state.position]?.card;
+    if (active) {
+      active.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' });
+    }
+    requestAnimationFrame(() => {
+      if (overview.open) layer.classList.add('is-open');
+      layoutOverview();
+    });
+    overview.open = true;
+    post('overview', { open: true });
+  }
+
+  function closeOverview() {
+    if (!overview.open || state.disposed) return;
+    const layer = overview.root;
+    overview.open = false;
+    layer.style.pointerEvents = 'none';
+    layer.classList.remove('is-open');
+    post('overview', { open: false });
+    clearTimeout(overview.closeTimer);
+    if (reducedMotion.matches) {
+      overview.closeTimer = 0;
+      layer.hidden = true;
+      return;
+    }
+    overview.closeTimer = setTimeout(() => {
+      overview.closeTimer = 0;
+      if (overview.open || overview.drag || state.disposed) return;
+      layer.hidden = true;
+    }, 320);
+  }
+
+  // Живое раскрытие: лента следует за пальцем вверх один к одному (после
+  // небольшого slop), решение открыть/закрыть принимается на подъёме по
+  // прогрессу и скорости жеста.
+  function startOverviewDrag(pointer, event) {
+    if (overview.drag || overview.open || state.disposed || !state.ready) return;
+    selection.clear(); // Выделение не должно жить под лентой.
+    ensureOverview();
+    syncOverviewActive();
+    const layer = overview.root;
+    clearTimeout(overview.closeTimer);
+    overview.closeTimer = 0;
+    layer.hidden = false;
+    layer.style.pointerEvents = 'none';
+    layer.style.transition = 'none';
+    // Центрируем активную карточку, пока лента ещё за краем экрана.
+    const active = overview.cards[state.position]?.card;
+    if (active) {
+      active.scrollIntoView({ inline: 'center', block: 'nearest', behavior: 'instant' });
+    }
+    layoutOverview();
+    pointer.overviewDragged = true;
+    pointer.moved = true;
+    overview.drag = {
+      startY: event.clientY,
+      lastY: event.clientY,
+      lastT: event.timeStamp,
+      velocity: 0,
+      progress: 0,
+      travel: layer.offsetHeight + overviewTravelGap,
+    };
+    paintOverviewDrag(0);
+    post('overview', { open: true });
+  }
+
+  function paintOverviewDrag(progress) {
+    const drag = overview.drag;
+    drag.progress = progress;
+    overview.root.style.transform = `translateY(${(1 - progress) * drag.travel}px)`;
+    overview.root.style.opacity = String(progress);
+  }
+
+  function updateOverviewDrag(clientY, timeStamp) {
+    const drag = overview.drag;
+    if (!drag) return;
+    const dt = Math.min(80, Math.max(1, timeStamp - drag.lastT));
+    drag.velocity = drag.velocity * 0.35 + (((drag.lastY - clientY) / dt) * 1000) * 0.65;
+    drag.lastY = clientY;
+    drag.lastT = timeStamp;
+    paintOverviewDrag(Math.max(0, Math.min(1, (drag.startY - clientY) / drag.travel)));
+  }
+
+  function settleOverviewDrag(canceled) {
+    const drag = overview.drag;
+    if (!drag) return;
+    overview.drag = null;
+    const layer = overview.root;
+    layer.style.transition = '';
+    const open = !canceled
+      && (drag.progress > 0.45 || drag.velocity > overviewOpenVelocity);
+    if (open) {
+      layer.style.pointerEvents = '';
+      layer.style.transform = '';
+      layer.style.opacity = '';
+      layer.classList.add('is-open');
+      overview.open = true;
+      syncOverviewActive();
+    } else {
+      layer.style.pointerEvents = 'none';
+      layer.style.transform = `translateY(${drag.travel}px)`;
+      layer.style.opacity = '0';
+      overview.closeTimer = setTimeout(() => {
+        overview.closeTimer = 0;
+        if (overview.open || overview.drag || state.disposed) return;
+        layer.hidden = true;
+        layer.style.transform = '';
+        layer.style.opacity = '';
+      }, 320);
+    }
+    // Открытие уже опубликовано на старте drag'а — наверх уходит только
+    // фактическая смена состояния.
+    if (!open) post('overview', { open: false });
+  }
+
+  // Свайп вниз по ленте закрывает выбор. Горизонтальный скролл, резинка у
+  // краёв и флинт целиком живут в reader-motion (touch-action: none), поэтому
+  // из собственных жестов ленты остался только dismissal.
+  function bindOverviewDismissal() {
+    let startX = 0, startY = 0, tracking = false;
+    overview.grid.addEventListener('touchstart', (event) => {
+      tracking = event.touches.length === 1;
+      if (!tracking) return;
+      startX = event.touches[0].clientX;
+      startY = event.touches[0].clientY;
+    }, { passive: true });
+    overview.grid.addEventListener('touchmove', (event) => {
+      if (!tracking || event.touches.length !== 1) return;
+      const dy = event.touches[0].clientY - startY;
+      const dx = event.touches[0].clientX - startX;
+      if (dy > 36 && Math.abs(dy) > Math.abs(dx)) {
+        tracking = false;
+        closeOverview();
+      }
+    }, { passive: true });
+    overview.grid.addEventListener('touchcancel', () => { tracking = false; }, { passive: true });
   }
 
   function zoomed() {
@@ -411,6 +681,7 @@
     nextHit: () => stepHit(1),
     previousHit: () => stepHit(-1),
     goToPosition,
+    closeOverview,
   };
 
   document.addEventListener('click', (event) => {
@@ -434,6 +705,10 @@
   viewport.addEventListener('pointerdown', (event) => {
     if (!state.ready || state.disposed) return;
     activePointers.add(event.pointerId);
+    // Пока открыта лента обзора, навигация читалки не вооружается: касание
+    // документа закрывает ленту (см. pointerup), сама лента живёт своими
+    // жестами.
+    if (overview.open) return;
     // Проверка кнопки — только для мыши: тач/перо в касании сообщают
     // button 0 и всегда должны вооружать кандидата на тап/свайп.
     if (activePointers.size !== 1 || !event.isPrimary
@@ -461,17 +736,47 @@
   // clears the sequence. Never let a drag that returns to its origin be a tap.
   window.addEventListener('pointermove', (event) => {
     const pointer = state.pointer;
-    if (pointer?.id === event.pointerId
-        && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > tapSlop) {
-      pointer.moved = true;
+    if (!pointer || pointer.id !== event.pointerId) return;
+    const dx = event.clientX - pointer.x;
+    const dy = event.clientY - pointer.y;
+    if (Math.hypot(dx, dy) > tapSlop) pointer.moved = true;
+    if (pointer.overviewDragged) {
+      updateOverviewDrag(event.clientY, event.timeStamp);
+      return;
+    }
+    // Живое раскрытие ленты: строго вертикальный жест вверх одним пальцем,
+    // на незумированном слайде без выделения и интерактивных целей.
+    if (format === 'pptx' && !overview.open && !pointer.multitouch
+        && !pointer.interactive && !pointer.selectionActive && !zoomed()
+        && dy < -overviewDragSlop && -dy > Math.abs(dx)) {
+      startOverviewDrag(pointer, event);
     }
   }, { passive: true });
   window.addEventListener('pointercancel', (event) => {
     activePointers.delete(event.pointerId);
-    if (state.pointer?.id === event.pointerId) state.pointer = null;
+    if (state.pointer?.id === event.pointerId) {
+      if (overview.drag) settleOverviewDrag(true);
+      state.pointer = null;
+    }
   }, { passive: true });
   window.addEventListener('pointerup', (event) => {
     activePointers.delete(event.pointerId);
+    if (overview.drag) {
+      // Второй палец (щипок) отменяет раскрытие, если pointercancel не пришёл.
+      settleOverviewDrag(state.pointer?.multitouch === true);
+      state.pointer = null;
+      return;
+    }
+    if (overview.open) {
+      // Касание документа при открытой ленте закрывает выбор; касания самой
+      // ленты обслуживают её карточки и свайп-дисмисс. У тач-указателей цель
+      // событий остаётся элементом нажатия, поэтому лента различима по target.
+      if (event.target instanceof Element
+          && !event.target.closest('#folio-overview')) {
+        closeOverview();
+      }
+      return;
+    }
     const pointer = state.pointer;
     if (!pointer || pointer.id !== event.pointerId) return;
     state.pointer = null;
@@ -498,6 +803,13 @@
       // панорамирует содержимое нативно, и ни свайп, ни тап по краю не
       // меняют слайд. Доступен только неподвижный тап (хром читалки).
       if (!zoomed()) {
+        // Вертикальный свайп — отдельный жест: вверх открывает обзор слайдов,
+        // вниз ничего не делает. Он всегда съедается, чтобы диагональ не
+        // листала слайды.
+        if (Math.abs(dy) > swipeSlop && Math.abs(dy) > Math.abs(dx)) {
+          if (dy < 0) openOverview();
+          return;
+        }
         // Свайп делает то же самое, что тап по краю, и тем же способом:
         // влево — вперёд, вправо — назад; слайд просто заменяется другим.
         if (Math.abs(dx) > swipeSlop && Math.abs(dx) >= Math.abs(dy)) {
@@ -559,6 +871,11 @@
   window.addEventListener('pagehide', () => {
     state.disposed = true;
     motion.dispose(); selection.dispose();
+    overview.open = false;
+    overview.drag = null;
+    overview.observer?.disconnect();
+    clearTimeout(overview.closeTimer);
+    overview.motion?.dispose();
     state.pointer = null; activePointers.clear();
     cancelAnimationFrame(state.scrollFrame); cancelAnimationFrame(state.resizeFrame);
     state.searchRevision++;

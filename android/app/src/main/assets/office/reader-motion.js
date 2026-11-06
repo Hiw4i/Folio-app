@@ -21,7 +21,8 @@
     return { position: a * e1 + b * e2, velocity: a * r1 * e1 + b * r2 * e2 };
   }
 
-  function create({ viewport, content, horizontal, canStart, cancelTap }) {
+  function create({ viewport, content, horizontal, canStart, cancelTap,
+    ownsScroll = false, maxOverscroll = Infinity }) {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
     let reduced = media.matches, disposed = false, gesture = null;
     let frame = 0, animation = null, position = 0, maximum = 0, dimension = 1;
@@ -56,7 +57,8 @@
       const bounded = clamp(position, 0, maximum);
       viewport.scrollTo(horizontal ? { left: bounded, behavior: 'instant' }
         : { top: bounded, behavior: 'instant' });
-      const offset = reduced ? 0 : -rubber(position - bounded, dimension);
+      const offset = reduced ? 0
+        : clamp(-rubber(position - bounded, dimension), -maxOverscroll, maxOverscroll);
       content.style.transform = Math.abs(offset) < 0.01 ? ''
         : horizontal ? `translate3d(${offset}px,0,0)` : `translate3d(0,${offset}px,0)`;
       content.style.willChange = offset ? 'transform' : '';
@@ -103,20 +105,29 @@
       }
       paint(); frame = requestAnimationFrame(tick);
     }
+    let lastTouchAction = '';
     function refreshTouchAction() {
-      // After a pinch, native WebView panning must regain both axes. Likewise,
-      // never intercept the browser's selection-handle auto-scroll.
-      viewport.style.touchAction = selected() || zoomed() ? 'auto' : 'pinch-zoom';
-      if (selected() || zoomed()) reset();
+      // JS-owned scrollers claim every gesture themselves (touch-action none).
+      // Word's scroller is JS-driven too but keeps native pinch zoom, flipping
+      // to auto while zoomed or selecting — WebView posts no visualViewport
+      // resize for pinch zoom, hence the poll below.
+      const next = ownsScroll ? 'none'
+        : selected() || zoomed() ? 'auto' : 'pinch-zoom';
+      if (next === lastTouchAction) return;
+      lastTouchAction = next;
+      viewport.style.touchAction = next;
+      if (next === 'auto') reset();
     }
     function start(event) {
-      // PowerPoint (horizontal): прокрутки нет вообще — слайды меняются
-      // обменом кадров. Дискретные команды (тап/свайп) обрабатываются в
-      // office.js на pointerup; здесь motion остаётся только менеджером
-      // touch-action для нативного пана на увеличенном слайде.
-      if (horizontal) { reset(); return; }
+      // Собственный скроллер (ownsScroll — лента слайдов) живёт здесь целиком.
+      // Документ PowerPoint (horizontal без ownsScroll) не прокручивается
+      // вообще: слайды меняются обменом кадров, дискретные команды (тап/свайп)
+      // обрабатываются в office.js на pointerup, а motion остаётся только
+      // менеджером touch-action для нативного пана на увеличенном слайде.
+      if (horizontal && !ownsScroll) { reset(); return; }
       if (event.touches.length !== 1 || !canDrive()
-          || event.target.closest?.('a,button,input,textarea,select,[contenteditable="true"]')) {
+          || (!ownsScroll
+            && event.target.closest?.('a,button,input,textarea,select,[contenteditable="true"]'))) {
         if (gesture || animation) cancelTap();
         reset(); return;
       }
@@ -180,6 +191,7 @@
     function dispose() {
       if (disposed) return;
       reset(); disposed = true; viewport.style.touchAction = '';
+      clearInterval(zoomPoll);
       viewport.removeEventListener('touchstart', start);
       viewport.removeEventListener('touchmove', move);
       viewport.removeEventListener('touchend', end);
@@ -199,9 +211,13 @@
     document.addEventListener('visibilitychange', visibilityChanged);
     window.visualViewport?.addEventListener('resize', refreshTouchAction);
     media.addEventListener('change', motionChanged);
+    // WebView keeps pinch zoom invisible to JS: visualViewport.resize does
+    // not fire for it (crbug 571297), so the zoomed→auto switch is also
+    // driven by a cheap poll. The event listeners stay wired for platforms
+    // where they do fire and make the switch instant there.
+    const zoomPoll = ownsScroll ? 0 : setInterval(refreshTouchAction, 150);
     refreshTouchAction();
-    return { reset, dispose, get isDragging() { return gesture?.dragging === true; },
-      get isAnimating() { return animation !== null; } };
+    return { reset, dispose, get isAnimating() { return animation !== null; } };
   }
-  window.FolioReaderMotion = { create, rubber, spring };
+  window.FolioReaderMotion = { create };
 })();

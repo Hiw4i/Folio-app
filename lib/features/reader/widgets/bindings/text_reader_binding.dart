@@ -42,6 +42,12 @@ final class TextReaderBinding implements ReaderBinding {
       const ReaderInteractionPolicy(scrollControlsChrome: true);
 
   @override
+  bool get hasSurfaceOverlay => false;
+
+  @override
+  bool closeSurfaceOverlay() => false;
+
+  @override
   Widget buildSurface(ReaderSurfaceCallbacks callbacks) {
     if (renderer.loadState == ReaderLoadState.loading) {
       return ReaderLoadingView(document: renderer.document);

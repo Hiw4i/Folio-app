@@ -29,6 +29,18 @@ final class OfficeReaderBinding implements ReaderBinding {
   final ReaderInteractionPolicy interactionPolicy;
 
   @override
+  bool get hasSurfaceOverlay => renderer.slideOverviewOpen;
+
+  @override
+  bool closeSurfaceOverlay() {
+    if (!renderer.slideOverviewOpen) {
+      return false;
+    }
+    renderer.closeOverview();
+    return true;
+  }
+
+  @override
   Widget buildSurface(ReaderSurfaceCallbacks callbacks) {
     if (!renderer.sourceReady) {
       return ReaderLoadingView(document: renderer.document);

@@ -130,6 +130,33 @@ void main() {
       expect(find.byType(PowerPointDocumentView), findsOneWidget);
       binding.dispose();
     });
+
+    testWidgets('PPTX overview mirrors into the shell overlay contract', (
+      tester,
+    ) async {
+      final renderer = PowerPointRendererStub(document: stubEntry('deck.pptx'));
+      addTearDown(renderer.dispose);
+      await renderer.open();
+      // The ready handshake also cancels the ready watchdog, which fake-async
+      // testWidgets would otherwise report as a pending timer.
+      renderer.handleViewEvent(<Object?, Object?>{
+        'type': 'ready', 'count': 3, 'hasText': true,
+      });
+      final binding = OfficeReaderBinding(renderer, supportsScrubbing: false);
+
+      expect(binding.hasSurfaceOverlay, isFalse);
+      expect(binding.closeSurfaceOverlay(), isFalse);
+
+      renderer.handleViewEvent(<Object?, Object?>{
+        'type': 'overview', 'open': true,
+      });
+      expect(binding.hasSurfaceOverlay, isTrue);
+      // Closing delegates to the renderer; the flag itself stays with the
+      // bridge event, so a repeated Back keeps re-sending the idempotent
+      // command instead of forgetting the open panel.
+      expect(binding.closeSurfaceOverlay(), isTrue);
+      binding.dispose();
+    });
   });
 }
 
