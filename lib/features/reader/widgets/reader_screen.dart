@@ -18,7 +18,7 @@ import '../logic/chrome_visibility.dart';
 import '../logic/document_renderer.dart';
 import '../logic/reader_state.dart';
 import '../logic/renderer_lifecycle.dart';
-import '../logic/title_truncation.dart';
+import '../../../shared/utils/title_truncation.dart';
 import 'file_info_sheet.dart';
 import 'bindings/reader_binding.dart';
 import 'bindings/reader_binding_factory.dart';
@@ -592,6 +592,38 @@ class _ReaderScreenState extends State<ReaderScreen>
     final navigatorFadeDuration = media.disableAnimations
         ? Duration.zero
         : AppDurations.fastest;
+    // The keyboard can lift the search controls into a collapsed menu's hit area.
+    final searchAboveMenus =
+        media.viewInsets.bottom > 0 && !_menuOpen && !_exitOpen;
+    final search = Positioned(
+      key: const ValueKey<String>('reader_search_slot'),
+      left: 0,
+      right: 0,
+      bottom: media.viewInsets.bottom,
+      height: LiquidSearchControlState.height + media.viewPadding.bottom,
+      child: ReaderChromeShell(
+        progress: _chromeProgress,
+        hiddenDy: ReaderChromeSpec.bottomHiddenDy,
+        child: LiquidSearchControl(
+          key: _searchKey,
+          hintText: 'Search in document',
+          semanticsLabel: 'Search in document',
+          onChanged: _searchChanged,
+          onSubmitted: (_) {
+            if (_renderer.hitCount > 0) {
+              _renderer.showNextHit();
+            }
+          },
+          onExpansionChanged: (expanded) {
+            if (!mounted || _searchExpanded == expanded) {
+              return;
+            }
+            setState(() => _searchExpanded = expanded);
+            _driveChrome();
+          },
+        ),
+      ),
+    );
     return Stack(
       fit: StackFit.expand,
       // The parent ColoredBox already paints the flat background; the old
@@ -664,36 +696,9 @@ class _ReaderScreenState extends State<ReaderScreen>
                   onScrubStateChanged: _handleScrubbingChanged,
                 ),
               ),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: media.viewInsets.bottom,
-                height:
-                    LiquidSearchControlState.height + media.viewPadding.bottom,
-                child: ReaderChromeShell(
-                  progress: _chromeProgress,
-                  hiddenDy: ReaderChromeSpec.bottomHiddenDy,
-                  child: LiquidSearchControl(
-                    key: _searchKey,
-                    hintText: 'Search in document',
-                    semanticsLabel: 'Search in document',
-                    onChanged: _searchChanged,
-                    onSubmitted: (_) {
-                      if (_renderer.hitCount > 0) {
-                        _renderer.showNextHit();
-                      }
-                    },
-                    onExpansionChanged: (expanded) {
-                      if (!mounted || _searchExpanded == expanded) {
-                        return;
-                      }
-                      setState(() => _searchExpanded = expanded);
-                      _driveChrome();
-                    },
-                  ),
-                ),
-              ),
+              if (!searchAboveMenus) search,
               Positioned.fill(
+                key: const ValueKey<String>('reader_exit_slot'),
                 child: IgnorePointer(
                   ignoring: _menuOpen,
                   child: ReaderChromeShell(
@@ -762,6 +767,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                 ),
               ),
               Positioned.fill(
+                key: const ValueKey<String>('reader_menu_slot'),
                 child: IgnorePointer(
                   ignoring: _exitOpen,
                   child: ReaderChromeShell(
@@ -819,6 +825,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                   ),
                 ),
               ),
+              if (searchAboveMenus) search,
               Positioned(
                 right: 20,
                 bottom:
@@ -892,17 +899,16 @@ class _TopChromeContent extends StatelessWidget {
             builder: (context, constraints) {
               final direction = Directionality.of(context);
               final textScaler = MediaQuery.textScalerOf(context);
-              final style = AppTextStyles.body(context);
+              final style = DefaultTextStyle.of(context).style
+                  .merge(AppTextStyles.body(context));
               final maxTextWidth = (constraints.maxWidth - _titlePadding).clamp(
                 0.0,
                 double.infinity,
               );
-              // The liquid surface loosens incoming constraints (its optical
-              // shell overflows the material box), so the label is truncated
-              // up front and the Text gets a tight box: `ellipsis` alone
-              // would never engage and the text would bleed past the glass.
+              // Truncate before rendering so a second line-break pass cannot
+              // remove the extension inside the glass pill.
               final label = _titleTruncator.truncate(
-                document.name,
+                document.nameWithExtension,
                 style,
                 maxTextWidth,
                 direction,
@@ -915,12 +921,20 @@ class _TopChromeContent extends StatelessWidget {
                 textScaler,
               );
               final titleWidth = (labelWidth + _titlePadding).clamp(
-                76.0,
+                constraints.maxWidth.clamp(0.0, 76.0),
                 constraints.maxWidth,
               );
               final textWidth = (titleWidth - _titlePadding).clamp(
                 0.0,
                 double.infinity,
+              );
+              final title = AdaptiveGlassText(
+                label,
+                semanticsLabel: document.name,
+                maxLines: 1,
+                softWrap: false,
+                textAlign: TextAlign.center,
+                style: style,
               );
               return Align(
                 child: _LiquidChromeObject(
@@ -933,16 +947,7 @@ class _TopChromeContent extends StatelessWidget {
                     child: SizedBox(
                       key: const ValueKey<String>('reader_title_text_box'),
                       width: textWidth,
-                      child: AdaptiveGlassText(
-                        label,
-                        // Screen readers announce the full name even when the
-                        // pill shows the truncated form.
-                        semanticsLabel: document.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: style,
-                      ),
+                      child: FittedBox(fit: BoxFit.scaleDown, child: title),
                     ),
                   ),
                 ),

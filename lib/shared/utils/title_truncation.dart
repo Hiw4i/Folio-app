@@ -1,6 +1,6 @@
-import 'package:flutter/painting.dart';
+import 'package:flutter/widgets.dart';
 
-import '../../../shared/utils/text_measurer.dart';
+import 'text_measurer.dart';
 
 /// Truncates a file name to fit [maxWidth], keeping the extension readable:
 /// `(Edited) Моя психика в социальн...pdf`, `Как сделать вку...txt`.
@@ -41,9 +41,6 @@ final class TitleTruncator {
       direction: direction,
       textScaler: textScaler,
     );
-    if (maxWidth <= 0) {
-      return '…';
-    }
     if (widthOf(name) <= maxWidth) {
       return name;
     }
@@ -53,7 +50,12 @@ final class TitleTruncator {
     }
     final stem = name.substring(0, dot);
     final extension = name.substring(dot + 1);
-    return _truncateWithSuffix(stem, '...$extension', maxWidth, widthOf);
+    final suffix = '...$extension';
+    // Callers can scale down the extension if the available width is tiny.
+    if (widthOf(suffix) > maxWidth) {
+      return extension;
+    }
+    return _truncateWithSuffix(stem, suffix, maxWidth, widthOf);
   }
 
   static String _truncateWithSuffix(
@@ -62,30 +64,18 @@ final class TitleTruncator {
     double maxWidth,
     double Function(String text) widthOf,
   ) {
-    if (widthOf(suffix) > maxWidth) {
-      // Extreme narrowness: even the suffix alone doesn't fit — shrink it.
-      var lo = 0;
-      var hi = suffix.length;
-      while (lo < hi) {
-        final mid = (lo + hi + 1) >> 1;
-        if (widthOf('${suffix.substring(0, mid)}…') <= maxWidth) {
-          lo = mid;
-        } else {
-          hi = mid - 1;
-        }
-      }
-      return '${suffix.substring(0, lo)}…';
-    }
+    final characters = stem.characters;
+    String label(int length) => '${characters.take(length)}$suffix';
     var lo = 0;
-    var hi = stem.length;
+    var hi = characters.length;
     while (lo < hi) {
       final mid = (lo + hi + 1) >> 1;
-      if (widthOf('${stem.substring(0, mid)}$suffix') <= maxWidth) {
+      if (widthOf(label(mid)) <= maxWidth) {
         lo = mid;
       } else {
         hi = mid - 1;
       }
     }
-    return '${stem.substring(0, lo)}$suffix';
+    return label(lo);
   }
 }

@@ -20,7 +20,7 @@ void main() {
       );
       await _pumpSheet(tester, document);
       expect(find.byType(FolioSheetContent), findsOneWidget);
-      expect(find.text('FILE INFO'), findsOneWidget);
+      expect(find.text('File Info'), findsOneWidget);
       expect(find.text(document.name), findsOneWidget);
       expect(find.text(format.extension.toUpperCase()), findsOneWidget);
       expect(find.text('120 B'), findsOneWidget);

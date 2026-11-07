@@ -277,6 +277,44 @@ void main() {
     expect(find.byKey(const ValueKey<String>('reader_surface')), findsNothing);
   });
 
+  testWidgets(
+    'Cancel takes the tap when the keyboard lifts it into the menu hit area',
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(840, 390);
+      tester.view.viewPadding = const FakeViewPadding(top: 28);
+      addTearDown(tester.view.reset);
+      await openReader(tester);
+
+      await tester.tapAt(
+        tester.getCenter(
+          find.byKey(const ValueKey<String>('search_button_hit')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      tester.view.viewInsets = const FakeViewPadding(bottom: 256);
+      await tester.pumpAndSettle();
+
+      await tester.tapAt(
+        tester.getCenter(
+          find.byKey(const ValueKey<String>('cancel_button_hit')),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .state<LiquidSearchControlState>(find.byType(LiquidSearchControl))
+            .isExpanded,
+        isFalse,
+      );
+      expect(
+        FocusManager.instance.primaryFocus?.debugLabel,
+        isNot('Search field'),
+      );
+      expect(menuContentOpacity(tester), 0);
+    },
+  );
+
   testWidgets('tapping an expanded search field restores input focus', (
     tester,
   ) async {
@@ -314,7 +352,7 @@ void main() {
 
     expect(find.byType(FileInfoSheet), findsOneWidget);
     expect(find.byType(FolioSheetContent), findsOneWidget);
-    expect(find.text('FILE INFO'), findsOneWidget);
+    expect(find.text('File Info'), findsOneWidget);
     expect(find.text('TXT'), findsOneWidget);
     expect(find.text('120 B'), findsOneWidget);
   });

@@ -294,8 +294,10 @@ class _MarkBuilder extends MarkdownElementBuilder {
   ) {
     return Text(
       element.textContent,
-      // Single-property override: the rest merges from the parent style.
-      style: const TextStyle(backgroundColor: Color(0x59D8B44A)),
+      style: TextStyle(
+        fontSize: parentStyle?.fontSize ?? _readerStyle(context).fontSize,
+        backgroundColor: const Color(0x59D8B44A),
+      ),
     );
   }
 }
@@ -324,6 +326,7 @@ class _SearchHitBuilder extends MarkdownElementBuilder {
       child: Text(
         element.textContent,
         style: TextStyle(
+          fontSize: parentStyle?.fontSize ?? _readerStyle(context).fontSize,
           color: active
               ? context.colors.activeSearchText
               : context.colors.primary,
@@ -348,7 +351,7 @@ TextStyle _readerStyle(
   Color? backgroundColor,
 }) => TextStyle(
   fontFamily: fontFamily ?? 'Inter',
-  fontSize: fontSize ?? 17,
+  fontSize: fontSize ?? AppTextStyles.reading(context).fontSize,
   height: 1.58,
   fontWeight: fontWeight,
   fontStyle: fontStyle,
@@ -370,19 +373,19 @@ MarkdownStyleSheet _readerMarkdownStyleSheet(BuildContext context) {
       color: colors.secondary,
       decoration: TextDecoration.underline,
     ),
-    h1: _readerStyle(context, fontSize: 30, fontWeight: FontWeight.w600),
-    h2: _readerStyle(context, fontSize: 25, fontWeight: FontWeight.w600),
-    h3: _readerStyle(context, fontSize: 21, fontWeight: FontWeight.w600),
-    h4: _readerStyle(context, fontSize: 18, fontWeight: FontWeight.w600),
-    h5: _readerStyle(context, fontSize: 17, fontWeight: FontWeight.w600),
-    h6: _readerStyle(context, fontSize: 16, fontWeight: FontWeight.w600),
+    h1: _readerStyle(context, fontSize: 27, fontWeight: FontWeight.w600),
+    h2: _readerStyle(context, fontSize: 22, fontWeight: FontWeight.w600),
+    h3: _readerStyle(context, fontSize: 19, fontWeight: FontWeight.w600),
+    h4: _readerStyle(context, fontSize: 16, fontWeight: FontWeight.w600),
+    h5: _readerStyle(context, fontWeight: FontWeight.w600),
+    h6: _readerStyle(context, fontSize: 14, fontWeight: FontWeight.w600),
     em: _readerStyle(context, fontStyle: FontStyle.italic),
     strong: _readerStyle(context, fontWeight: FontWeight.w600),
     del: _readerStyle(context, decoration: TextDecoration.lineThrough),
     code: _readerStyle(
       context,
       fontFamily: 'monospace',
-      fontSize: 15,
+      fontSize: 13,
       backgroundColor: colors.surface,
     ),
     blockquote: _readerStyle(context, color: colors.secondary),
@@ -406,7 +409,7 @@ MarkdownStyleSheet _readerMarkdownStyleSheet(BuildContext context) {
     listIndent: 25,
     blockSpacing: 13,
     tableHead: _readerStyle(context, fontWeight: FontWeight.w600),
-    tableBody: _readerStyle(context, fontSize: 15),
+    tableBody: _readerStyle(context, fontSize: 13),
     tableBorder: TableBorder.all(color: colors.border, width: 0.8),
     tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
     horizontalRuleDecoration: BoxDecoration(
@@ -437,7 +440,7 @@ class _BlockedImage extends StatelessWidget {
         child: Text(
           label?.isNotEmpty == true ? label! : 'External image blocked',
           textAlign: TextAlign.center,
-          style: AppTextStyles.metadata(context),
+          style: AppTextStyles.metadata(context).copyWith(fontSize: 11),
         ),
       ),
     );

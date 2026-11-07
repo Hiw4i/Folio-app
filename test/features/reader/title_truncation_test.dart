@@ -1,6 +1,6 @@
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:folio/features/reader/logic/title_truncation.dart';
+import 'package:folio/shared/utils/title_truncation.dart';
 
 const _style = TextStyle(fontSize: 14, fontFamily: 'Test');
 
@@ -40,8 +40,14 @@ void main() {
   });
 
   test('extreme narrowness shrinks to the ellipsis', () {
-    expect(truncate('anything.pdf', 0), '…');
-    expect(truncate('anything.pdf', -5), '…');
+    expect(truncate('anything', 0), '…');
+    expect(truncate('anything', -5), '…');
+  });
+
+  test('narrow space drops the dots before dropping the extension', () {
+    final width = truncator.measure('PDF', _style, direction, scaler);
+    expect(truncate('anything.PDF', width), 'PDF');
+    expect(truncate('anything.PDF', width / 2), 'PDF');
   });
 
   test('repeated truncation is stable (cache correctness)', () {

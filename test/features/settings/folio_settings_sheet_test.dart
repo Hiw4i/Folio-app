@@ -32,6 +32,7 @@ void main() {
     await tester.tap(button);
     await tester.pumpAndSettle();
     expect(find.byType(FolioSettingsSheet), findsOneWidget);
+    expect(find.text('Settings'), findsOneWidget);
     final blur = find.byKey(const ValueKey<String>('settings_blur'));
     final motion = find.byKey(const ValueKey<String>('settings_liquid_motion'));
     final navigation = find.byKey(

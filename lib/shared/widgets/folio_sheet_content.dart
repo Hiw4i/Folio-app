@@ -79,16 +79,10 @@ class FolioSheetContent extends StatelessWidget {
                       header: true,
                       namesRoute: true,
                       child: Text(
-                        title.toUpperCase(),
+                        title,
                         semanticsLabel: title,
                         textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 24,
-                          fontWeight: FontWeight.w600,
-                          color: context.colors.primary,
-                          decoration: TextDecoration.none,
-                        ),
+                        style: AppTextStyles.heading(context),
                       ),
                     ),
                   ),

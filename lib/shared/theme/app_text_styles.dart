@@ -57,7 +57,7 @@ abstract final class AppTextStyles {
 
   /// Long-form reading text for the text/markdown reader surface.
   static TextStyle reading(BuildContext context) =>
-      _style(context, fontSize: 17, height: 1.62, letterSpacing: -0.05);
+      _style(context, fontSize: 15, height: 1.62, letterSpacing: -0.05);
 
   /// Pale small text: metadata rows, captions, quiet labels.
   static TextStyle metadata(BuildContext context) => _style(

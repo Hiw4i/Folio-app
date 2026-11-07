@@ -70,12 +70,11 @@ void main() {
           ),
         );
         expect(scroll.padding, AppSpacing.sheetPadding);
-        final title = tester.widget<Text>(
-          find.text(sheet == _Sheet.settings ? 'SETTINGS' : 'FILE INFO'),
+        final titleFinder = find.text(
+          sheet == _Sheet.settings ? 'Settings' : 'File Info',
         );
-        expect(title.style?.fontSize, 24);
-        expect(title.style?.fontWeight, FontWeight.w600);
-        expect(title.style?.decoration, TextDecoration.none);
+        final title = tester.widget<Text>(titleFinder);
+        expect(title.style, AppTextStyles.heading(tester.element(titleFinder)));
         expect(title.textAlign, TextAlign.center);
         expect(find.byType(Dialog), findsNothing);
         expect(find.byType(DraggableScrollableSheet), findsNothing);

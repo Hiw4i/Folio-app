@@ -106,6 +106,11 @@ class DocumentEntry {
   final DateTime? lastOpenedAt;
   final bool isAvailable;
 
+  String get nameWithExtension =>
+      DocumentFormatPresentation.fromFileName(name) == null
+      ? '$name.${format.extension}'
+      : name;
+
   /// Creation time when known, otherwise the last modification time.
   /// Older cached entries may not have [createdAt] yet.
   DateTime get effectiveCreatedAt => createdAt ?? modifiedAt;

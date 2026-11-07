@@ -3,7 +3,10 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../../../shared/theme/folio_theme.dart';
 import '../../../shared/utils/file_format.dart' show formatFileSize;
+import '../../../shared/utils/title_truncation.dart';
 import '../data/document_entry.dart';
+
+final _titleTruncator = TitleTruncator();
 
 class DocumentRow extends StatefulWidget {
   const DocumentRow({
@@ -65,11 +68,29 @@ class _DocumentRowState extends State<DocumentRow> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: <Widget>[
-                        Text(
-                          document.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.body(context),
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final style = DefaultTextStyle.of(context).style
+                                .merge(AppTextStyles.body(context));
+                            final name = _titleTruncator.truncate(
+                              document.nameWithExtension,
+                              style,
+                              constraints.maxWidth,
+                              Directionality.of(context),
+                              MediaQuery.textScalerOf(context),
+                            );
+                            return FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: AlignmentDirectional.centerStart,
+                              child: Text(
+                                name,
+                                semanticsLabel: document.name,
+                                maxLines: 1,
+                                softWrap: false,
+                                style: style,
+                              ),
+                            );
+                          },
                         ),
                         SizedBox(height: AppSpacing.xs),
                         Text(

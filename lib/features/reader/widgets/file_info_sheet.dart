@@ -26,7 +26,7 @@ class FileInfoSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FolioSheetContent(
-      title: 'File info',
+      title: 'File Info',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,

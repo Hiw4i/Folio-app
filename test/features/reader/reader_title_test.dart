@@ -83,7 +83,7 @@ void main() {
     expect(_titleText(tester).data, 'TOMATO.txt');
   });
 
-  testWidgets('name without extension falls back to end ellipsis', (
+  testWidgets('name without extension shows the known format', (
     tester,
   ) async {
     await tester.binding.setSurfaceSize(const Size(400, 800));
@@ -104,6 +104,6 @@ void main() {
 
     final label = _titleText(tester).data!;
     expect(label, isNot(name));
-    expect(label.endsWith('…') || label.endsWith('...'), isTrue);
+    expect(label, endsWith('...txt'));
   });
 }
