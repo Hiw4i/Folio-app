@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/gestures.dart' show kPrimaryButton;
+import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
@@ -90,7 +91,6 @@ class _ReaderScreenState extends State<ReaderScreen>
   /// controller, percent projection) and builds the document surface.
   late final ReaderBinding _binding;
   late final AnimationController _chromeController;
-  late final CurvedAnimation _chromeProgress;
   Timer? _searchDebounce;
   Timer? _initialLoadDelay;
   bool _chromeTarget = true;
@@ -125,17 +125,7 @@ class _ReaderScreenState extends State<ReaderScreen>
   @override
   void initState() {
     super.initState();
-    _chromeController = AnimationController(
-      vsync: this,
-      duration: ReaderChromeSpec.showDuration,
-      reverseDuration: ReaderChromeSpec.hideDuration,
-      value: 1,
-    );
-    _chromeProgress = CurvedAnimation(
-      parent: _chromeController,
-      curve: ReaderChromeSpec.showCurve,
-      reverseCurve: ReaderChromeSpec.hideCurve,
-    );
+    _chromeController = AnimationController(vsync: this, value: 1);
     _renderer =
         widget.initialRenderer ??
         createDocumentRenderer(
@@ -181,12 +171,7 @@ class _ReaderScreenState extends State<ReaderScreen>
     final reducedMotion = MediaQuery.disableAnimationsOf(context);
     if (reducedMotion != _chromeReducedMotion) {
       _chromeReducedMotion = reducedMotion;
-      _chromeController.duration = reducedMotion
-          ? Duration.zero
-          : ReaderChromeSpec.showDuration;
-      _chromeController.reverseDuration = reducedMotion
-          ? Duration.zero
-          : ReaderChromeSpec.hideDuration;
+      _driveChrome();
     }
   }
 
@@ -214,16 +199,28 @@ class _ReaderScreenState extends State<ReaderScreen>
         !_scrubbing &&
         !_surfaceOverlayOpen &&
         (_chromeTarget || _searchExpanded);
+    final target = shouldShow ? 1.0 : 0.0;
+    if (_chromeReducedMotion) {
+      _chromeController.value = target;
+      return;
+    }
+    if (shouldShow == _chromeController.isForwardOrCompleted) {
+      return;
+    }
+
+    // Sample both before animateWith stops the current simulation.
+    final spring = SpringSimulation(
+      ReaderChromeSpec.spring,
+      _chromeController.value,
+      target,
+      _chromeController.velocity,
+      snapToEnd: true,
+      tolerance: ReaderChromeSpec.tolerance,
+    );
     if (shouldShow) {
-      if (!_chromeController.isCompleted &&
-          _chromeController.status != AnimationStatus.forward) {
-        _chromeController.forward();
-      }
+      _chromeController.animateWith(spring);
     } else {
-      if (!_chromeController.isDismissed &&
-          _chromeController.status != AnimationStatus.reverse) {
-        _chromeController.reverse();
-      }
+      _chromeController.animateBackWith(spring);
     }
   }
 
@@ -538,7 +535,6 @@ class _ReaderScreenState extends State<ReaderScreen>
     _renderer.removeListener(_rendererChanged);
     _binding.dispose();
     releaseDocumentRenderer(_renderer);
-    _chromeProgress.dispose();
     _chromeController.dispose();
     widget.onDisposed?.call();
     super.dispose();
@@ -602,7 +598,7 @@ class _ReaderScreenState extends State<ReaderScreen>
       bottom: media.viewInsets.bottom,
       height: LiquidSearchControlState.height + media.viewPadding.bottom,
       child: ReaderChromeShell(
-        progress: _chromeProgress,
+        progress: _chromeController,
         hiddenDy: ReaderChromeSpec.bottomHiddenDy,
         child: LiquidSearchControl(
           key: _searchKey,
@@ -662,7 +658,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                 top: media.viewPadding.top + 10,
                 height: 50,
                 child: ReaderChromeShell(
-                  progress: _chromeProgress,
+                  progress: _chromeController,
                   hiddenDy: ReaderChromeSpec.topHiddenDy,
                   child: _TopChromeContent(document: widget.document),
                 ),
@@ -671,7 +667,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                 left: 20,
                 bottom: media.viewInsets.bottom + media.viewPadding.bottom + 28,
                 child: ReaderChromeShell(
-                  progress: _chromeProgress,
+                  progress: _chromeController,
                   hiddenDy: ReaderChromeSpec.pillHiddenDy,
                   child: AnimatedBuilder(
                     animation: _binding.navigation,
@@ -702,7 +698,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                 child: IgnorePointer(
                   ignoring: _menuOpen,
                   child: ReaderChromeShell(
-                    progress: _chromeProgress,
+                    progress: _chromeController,
                     hiddenDy: ReaderChromeSpec.topHiddenDy,
                     child: LiquidMorphingControl(
                       key: _exitKey,
@@ -771,7 +767,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                 child: IgnorePointer(
                   ignoring: _exitOpen,
                   child: ReaderChromeShell(
-                    progress: _chromeProgress,
+                    progress: _chromeController,
                     hiddenDy: ReaderChromeSpec.topHiddenDy,
                     child: LiquidMorphingControl(
                       key: _menuKey,
@@ -831,7 +827,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                 bottom:
                     media.viewInsets.bottom + media.viewPadding.bottom + 102,
                 child: ReaderChromeShell(
-                  progress: _chromeProgress,
+                  progress: _chromeController,
                   hiddenDy: ReaderChromeSpec.pillHiddenDy,
                   child: AnimatedBuilder(
                     animation: _renderer,
@@ -842,9 +838,7 @@ class _ReaderScreenState extends State<ReaderScreen>
                       return TweenAnimationBuilder<double>(
                         tween: Tween<double>(end: gated ? 1 : 0),
                         duration: navigatorFadeDuration,
-                        curve: gated
-                            ? ReaderChromeSpec.showCurve
-                            : ReaderChromeSpec.hideCurve,
+                        curve: gated ? AppCurves.emphasized : AppCurves.exit,
                         builder: (context, opacity, child) =>
                             LiquidFade(opacity: opacity, child: child!),
                         child: IgnorePointer(

@@ -84,6 +84,21 @@ adb -s <device> pull /data/misc/perfetto-traces/folio.pftrace
 Flutter `FrameTiming` не покрывает WebView; presentation-часть смотрится в
 Perfetto отдельно и не складывается с UI/raster механически.
 
+Для A/B-прогона на одном телефоне запустить приложение заново для каждого режима.
+По умолчанию действует `off`.
+
+```bash
+flutter run --profile --dart-define=FOLIO_TOUCH_RESAMPLING=off
+flutter run --profile --dart-define=FOLIO_TOUCH_RESAMPLING=-16
+flutter run --profile --dart-define=FOLIO_TOUCH_RESAMPLING=-8
+```
+
+На длинном TXT повторить медленную прокрутку, резкий разворот пальца и
+отпускание во fling. Сравнить равномерность движения и отставание от пальца
+при одинаковой частоте экрана. Для отставания пригодится высокоскоростная
+съёмка. Флаг настраивает Flutter GestureBinding. Жесты внутри Office WebView
+измеряются отдельно.
+
 ## 4. Что фиксировать в каждом отчёте
 
 Устройство, refresh rate, Android/WebView/Flutter версии, режим сборки,

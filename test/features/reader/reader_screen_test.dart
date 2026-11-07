@@ -14,6 +14,7 @@ import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
 import 'package:folio/features/reader/widgets/file_info_sheet.dart';
+import 'package:folio/features/reader/widgets/reader_chrome.dart';
 import 'package:folio/shared/glass/widgets/adaptive_glass_foreground.dart';
 import 'package:folio/shared/settings/folio_settings.dart';
 import 'package:folio/shared/glass/widgets/liquid_glass_control.dart';
@@ -529,6 +530,57 @@ void main() {
       ),
       findsOneWidget,
     );
+  });
+
+  testWidgets('chrome preserves its motion through a mid-flight reversal', (
+    tester,
+  ) async {
+    await openReader(tester);
+    double progress() => tester
+        .widget<ReaderChromeShell>(find.byType(ReaderChromeShell).first)
+        .progress
+        .value;
+    const content = Offset(200, 430);
+
+    await tester.tapAt(content);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    final beforeReversal = progress();
+    expect(beforeReversal, inExclusiveRange(0, 1));
+
+    await tester.tapAt(content);
+    await tester.pump();
+    expect(progress(), closeTo(beforeReversal, 0.0001));
+    await tester.pump(const Duration(milliseconds: 8));
+    expect(progress(), lessThan(beforeReversal));
+
+    await tester.pumpAndSettle();
+    expect(progress(), 1);
+  });
+
+  testWidgets('reduced motion settles an in-flight chrome animation', (
+    tester,
+  ) async {
+    await openReader(tester);
+    addTearDown(tester.platformDispatcher.clearAccessibilityFeaturesTestValue);
+    final chrome = find.byType(ReaderChromeShell).first;
+    double progress() =>
+        tester.widget<ReaderChromeShell>(chrome).progress.value;
+    const content = Offset(200, 430);
+
+    await tester.tapAt(content);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 60));
+    expect(progress(), inExclusiveRange(0, 1));
+
+    tester.platformDispatcher.accessibilityFeaturesTestValue =
+        FakeAccessibilityFeatures(disableAnimations: true);
+    await tester.pump();
+    expect(progress(), 0);
+
+    await tester.tapAt(content);
+    await tester.pump();
+    expect(progress(), 1);
   });
 
   testWidgets('chrome hides on downward scroll and returns on content tap', (

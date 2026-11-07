@@ -11,6 +11,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
 import 'app/folio_root.dart';
+import 'app/touch_resampling.dart';
 import 'features/library/data/document_entry.dart';
 import 'features/library/data/file_library_repository.dart';
 import 'features/library/data/library_repository.dart';
@@ -29,7 +30,8 @@ import 'shared/settings/folio_settings_store.dart';
 import 'shared/theme/folio_theme.dart';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
+  final binding = WidgetsFlutterBinding.ensureInitialized();
+  configureTouchResampling(binding);
   _installGlobalErrorHandlers();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   // Overlay icon brightness is theme-dependent and rides the widget tree via

@@ -1,7 +1,6 @@
 import 'package:flutter/widgets.dart';
 
 import '../../../shared/glass/surface/liquid_surface.dart';
-import '../../../shared/theme/folio_theme.dart';
 
 /// Shared show/hide spec for every reader control.
 ///
@@ -12,11 +11,10 @@ import '../../../shared/theme/folio_theme.dart';
 /// once dismissed, are fully unmounted — no `BackdropFilter` cost while
 /// reading.
 abstract final class ReaderChromeSpec {
-  static const Duration showDuration = AppDurations.xslow;
-  static const Duration hideDuration = AppDurations.xslow;
-
-  static const Curve showCurve = AppCurves.emphasized;
-  static const Curve hideCurve = AppCurves.exit;
+  // Critical damping keeps the shared slide and opacity in range without
+  // bouncing. A full transition from rest settles in roughly 420 ms.
+  static const spring = SpringDescription(mass: 1, stiffness: 484, damping: 44);
+  static const tolerance = Tolerance(distance: 0.001, velocity: 0.02);
 
   /// A short intentional drag is required before chrome changes direction.
   /// This filters touch jitter, bounce-back and tiny reading corrections.
@@ -28,8 +26,7 @@ abstract final class ReaderChromeSpec {
   static const double pillHiddenDy = 56;
 }
 
-/// Slide/fade driven by the common chrome animation. Geometry, timing, hit
-/// testing and unmounting at the hidden endpoint are unchanged. The fade is
+/// Slide/fade driven by the common chrome animation. The fade is
 /// consumed by glass paint/foreground below backdrop filters: an Opacity above
 /// them would replace the real document with a transparent offscreen input.
 /// Keep the same subtree at every visible progress value, including exactly 1.
