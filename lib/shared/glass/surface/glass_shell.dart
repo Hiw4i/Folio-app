@@ -4,6 +4,8 @@ import 'package:flutter/widgets.dart';
 
 import '../../settings/folio_settings_scope.dart';
 
+import '../../theme/folio_theme.dart';
+import '../core/glass_tokens.dart';
 import 'liquid_surface.dart';
 import 'liquid_surface_style.dart';
 
@@ -42,6 +44,7 @@ class GlassShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final blurEnabled = FolioSettingsScope.blurEnabledOf(context);
+    final glass = context.glass;
     final motionSigma = blurSigma;
     final transitionSigma = LiquidBlurScope.maybeOf(context);
     final transitionOpacity = LiquidBlurScope.maybeOpacityOf(context) ?? 1.0;
@@ -90,6 +93,7 @@ class GlassShell extends StatelessWidget {
                   press: press,
                   focused: focused,
                   blurEnabled: blurEnabled,
+                  glass: glass,
                   fill: fill,
                 ),
               ),
@@ -141,7 +145,7 @@ class _ShellShadowPainter extends CustomPainter {
   /// Fully static config: shared across frames/canvases instead of being
   /// reallocated on every repaint. Pixel-identical output.
   static final Paint _shadowPaint = Paint()
-    ..color = const Color(0xFF020809).withValues(alpha: 0.30)
+    ..color = LiquidShadows.color.withValues(alpha: LiquidShadows.opacity)
     ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
 
   @override
@@ -152,7 +156,9 @@ class _ShellShadowPainter extends CustomPainter {
       path,
     );
     final shadowPaint = opacity >= 0.999 ? _shadowPaint : Paint()
-      ..color = const Color(0xFF020809).withValues(alpha: 0.30 * opacity)
+      ..color = LiquidShadows.color.withValues(
+        alpha: LiquidShadows.opacity * opacity,
+      )
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 12);
     canvas.save();
     canvas.clipPath(outside);
@@ -178,6 +184,7 @@ class _ShellPainter extends CustomPainter {
     required this.press,
     required this.focused,
     required this.blurEnabled,
+    required this.glass,
     this.fill,
   });
 
@@ -187,6 +194,9 @@ class _ShellPainter extends CustomPainter {
   final bool focused;
 
   final bool blurEnabled;
+
+  /// Resolved glass optics: opaque fill and rim colors follow the theme.
+  final GlassColors glass;
   final Color? fill;
 
   /// Fully static paint configs: shared instead of reallocated per repaint.
@@ -194,8 +204,10 @@ class _ShellPainter extends CustomPainter {
   /// (white -> light gray), everything darker lightens (black -> dark gray).
   /// Alpha controls the strength of the pull.
   static final Paint _fillPaint = Paint()..color = const Color(0x33868683);
-  static final Paint _opaqueFillPaint = Paint()
-    ..color = LiquidSurfaceStyle.opaqueFill;
+  static final Paint _opaqueFillPaintDark = Paint()
+    ..color = darkGlassColors.opaqueFill;
+  static final Paint _opaqueFillPaintLight = Paint()
+    ..color = lightGlassColors.opaqueFill;
   static final Paint _innerWidePaint = Paint()
     ..style = PaintingStyle.stroke
     ..strokeWidth = 11
@@ -213,7 +225,7 @@ class _ShellPainter extends CustomPainter {
     if (blurEnabled) {
       fillPaint = fill == null ? _fillPaint : (Paint()..color = fill!);
     } else {
-      fillPaint = _opaqueFillPaint;
+      fillPaint = glass.isLight ? _opaqueFillPaintLight : _opaqueFillPaintDark;
     }
     canvas.drawPath(path, fillPaint);
     // The inset edge belongs to the material, not to the backdrop filter.
@@ -249,6 +261,7 @@ class _ShellPainter extends CustomPainter {
       canvas,
       path,
       bounds: path.getBounds(),
+      rimColors: glass.rimColors,
       width: focused ? 1.15 : 0.82,
     );
 
@@ -282,6 +295,7 @@ class _ShellPainter extends CustomPainter {
         oldDelegate.glowCenter != glowCenter ||
         oldDelegate.focused != focused ||
         oldDelegate.blurEnabled != blurEnabled ||
+        !identical(oldDelegate.glass, glass) ||
         oldDelegate.fill != fill) {
       return true;
     }

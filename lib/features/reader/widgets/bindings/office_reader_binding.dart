@@ -14,7 +14,10 @@ import 'reader_binding.dart';
 /// decided at the composition root — DOCX pages scrub, PPTX slides do not.
 final class OfficeReaderBinding implements ReaderBinding {
   OfficeReaderBinding(this.renderer, {required bool supportsScrubbing})
-    : navigation = OfficeReaderNavigation(renderer, supportsScrubbing: supportsScrubbing),
+    : navigation = OfficeReaderNavigation(
+        renderer,
+        supportsScrubbing: supportsScrubbing,
+      ),
       interactionPolicy = ReaderInteractionPolicy(
         scrollControlsChrome: renderer is! PowerPointDocumentRenderer,
       );

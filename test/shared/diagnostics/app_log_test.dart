@@ -34,7 +34,10 @@ void main() {
   test('warnings always surface', () {
     AppLog.w('Cache read degraded', 'file missing');
 
-    expect(lines.single, contains('Folio[WARN] Cache read degraded: file missing'));
+    expect(
+      lines.single,
+      contains('Folio[WARN] Cache read degraded: file missing'),
+    );
   });
 
   test('debug lines are suppressed when verbose is off', () {

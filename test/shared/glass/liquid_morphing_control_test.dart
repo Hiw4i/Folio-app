@@ -85,9 +85,8 @@ void main() {
     // glyph masks are pre-rasterized off the open animation's first frame.
     expect(find.text('Menu content'), findsOneWidget);
     expect(
-      AdaptiveGlassEffects.of(
-        tester.element(find.text('Menu content')),
-      ).opacity,
+      AdaptiveGlassEffects.of(tester.element(find.text('Menu content')))
+          .opacity,
       0,
     );
 

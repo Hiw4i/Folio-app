@@ -102,40 +102,46 @@ void main() {
     expect(renderer.failure?.canRetry, isTrue);
   });
 
-  test('a late session arriving after the timeout is closed, not leaked', () async {
-    final gateway = _LateOfficeGateway();
-    final renderer = WordDocumentRenderer(
-      document: document,
-      gateway: gateway,
-      prepareTimeout: const Duration(milliseconds: 50),
-    );
-    addTearDown(renderer.dispose);
+  test(
+    'a late session arriving after the timeout is closed, not leaked',
+    () async {
+      final gateway = _LateOfficeGateway();
+      final renderer = WordDocumentRenderer(
+        document: document,
+        gateway: gateway,
+        prepareTimeout: const Duration(milliseconds: 50),
+      );
+      addTearDown(renderer.dispose);
 
-    await renderer.open();
-    expect(renderer.loadState, ReaderLoadState.failed);
+      await renderer.open();
+      expect(renderer.loadState, ReaderLoadState.failed);
 
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    expect(gateway.closeCount, 1);
-    expect(renderer.sourceReady, isFalse);
-  });
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      expect(gateway.closeCount, 1);
+      expect(renderer.sourceReady, isFalse);
+    },
+  );
 
-  test('a prepared session without ready fails instead of loading forever', () async {
-    final renderer = WordDocumentRenderer(
-      document: document,
-      gateway: _FakeOfficeGateway(),
-      readyTimeout: const Duration(milliseconds: 80),
-    );
-    addTearDown(renderer.dispose);
+  test(
+    'a prepared session without ready fails instead of loading forever',
+    () async {
+      final renderer = WordDocumentRenderer(
+        document: document,
+        gateway: _FakeOfficeGateway(),
+        readyTimeout: const Duration(milliseconds: 80),
+      );
+      addTearDown(renderer.dispose);
 
-    await renderer.open();
-    expect(renderer.sourceReady, isTrue);
-    expect(renderer.loadState, ReaderLoadState.loading);
+      await renderer.open();
+      expect(renderer.sourceReady, isTrue);
+      expect(renderer.loadState, ReaderLoadState.loading);
 
-    await Future<void>.delayed(const Duration(milliseconds: 250));
-    expect(renderer.loadState, ReaderLoadState.failed);
-    expect(renderer.failure?.message, contains('did not finish loading'));
-    expect(renderer.failure?.canRetry, isTrue);
-  });
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      expect(renderer.loadState, ReaderLoadState.failed);
+      expect(renderer.failure?.message, contains('did not finish loading'));
+      expect(renderer.failure?.canRetry, isTrue);
+    },
+  );
 
   test('ready before the watchdog keeps the document open', () async {
     final renderer = WordDocumentRenderer(

@@ -42,6 +42,7 @@ class LiquidMorphingControl extends StatefulWidget {
     required this.collapsedSemanticsLabel,
     this.expandedSemanticsLabel,
     this.collapsedHitKey,
+    this.collapsedHitChild,
     this.onCollapsedTap,
     this.onExpansionChanged,
     this.hitSlop = 8,
@@ -54,6 +55,9 @@ class LiquidMorphingControl extends StatefulWidget {
   final String collapsedSemanticsLabel;
   final String? expandedSemanticsLabel;
   final Key? collapsedHitKey;
+
+  /// An optional overlay anchor inside the collapsed button's visual bounds.
+  final Widget? collapsedHitChild;
 
   /// Runs on a short tap while collapsed. When null, a tap expands the
   /// control. A long press always expands it.
@@ -393,7 +397,12 @@ class LiquidMorphingControlState extends State<LiquidMorphingControl>
                                 }
                                 return KeyEventResult.ignored;
                               },
-                              child: const SizedBox.expand(),
+                              child: Padding(
+                                padding: EdgeInsets.all(widget.hitSlop),
+                                child:
+                                    widget.collapsedHitChild ??
+                                    const SizedBox.expand(),
+                              ),
                             ),
                           ),
                         ),

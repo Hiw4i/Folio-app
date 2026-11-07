@@ -26,8 +26,8 @@ const _settleBetweenCycles = Duration(milliseconds: 500);
 
 Duration _openTimeout(DocumentFormat format) =>
     format == DocumentFormat.docx || format == DocumentFormat.pptx
-        ? const Duration(seconds: 60)
-        : const Duration(seconds: 30);
+    ? const Duration(seconds: 60)
+    : const Duration(seconds: 30);
 
 Future<void> main() async {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -103,14 +103,14 @@ Widget _surface(DocumentRenderer renderer) {
       view: WidgetsBinding.instance.platformDispatcher.views.first,
       child: switch (renderer) {
         PdfDocumentRenderer() => PdfDocumentView(
-            renderer: renderer,
-            onContentTap: () {},
-            onVerticalReadingGesture: (_) {},
-          ),
+          renderer: renderer,
+          onContentTap: () {},
+          onVerticalReadingGesture: (_) {},
+        ),
         OfficeDocumentRendererBase() => OfficeDocumentPlatformView(
-            renderer: renderer,
-            onContentTap: () {},
-          ),
+          renderer: renderer,
+          onContentTap: () {},
+        ),
         _ => const SizedBox.shrink(),
       },
     ),

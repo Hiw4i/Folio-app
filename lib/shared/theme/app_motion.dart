@@ -14,5 +14,6 @@ abstract final class AppMotion {
 
   /// [AppDurations.fast] resolved for the current motion preference — the
   /// common case of a standard-speed reveal that must collapse to instant.
-  static Duration fast(BuildContext context) => resolve(context, AppDurations.fast);
+  static Duration fast(BuildContext context) =>
+      resolve(context, AppDurations.fast);
 }

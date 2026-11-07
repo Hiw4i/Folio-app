@@ -30,6 +30,7 @@ export 'widgets/liquid_container.dart';
 export 'widgets/liquid_content.dart';
 export 'widgets/liquid_glass_button.dart';
 export 'widgets/liquid_glass_control.dart';
+export 'widgets/liquid_glass_toggle.dart';
 export 'widgets/liquid_morphing_control.dart';
 export 'widgets/liquid_search_control.dart';
 export 'widgets/liquid_search_morph.dart';

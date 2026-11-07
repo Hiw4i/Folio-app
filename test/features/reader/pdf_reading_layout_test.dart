@@ -68,7 +68,8 @@ void main() {
         _Page(595.276, 841.89),
       ], params);
       final controller = _Controller(size);
-      final delegate = pdfReadingSizeDelegateProvider.create()..init(controller);
+      final delegate = pdfReadingSizeDelegateProvider.create()
+        ..init(controller);
       addTearDown(delegate.dispose);
       final snapshot = _snapshot(delegate, layout, size);
       delegate.onLayoutInitialized(
@@ -101,7 +102,10 @@ void main() {
       zoom: portrait.width / layout.documentSize.width,
     );
     for (final size in const <Size>[
-      Size(915, 412), portrait, Size(915, 412), portrait,
+      Size(915, 412),
+      portrait,
+      Size(915, 412),
+      portrait,
     ]) {
       final next = _snapshot(delegate, layout, size);
       delegate.onLayoutUpdate(
@@ -132,7 +136,8 @@ void main() {
     final delegate = pdfReadingSizeDelegateProvider.create()..init(controller);
     addTearDown(delegate.dispose);
     controller.value = controller.calcMatrixFor(
-      const Offset(350, 400), zoom: 3,
+      const Offset(350, 400),
+      zoom: 3,
     );
     delegate.onLayoutUpdate(
       oldState: _snapshot(delegate, layout, portrait),

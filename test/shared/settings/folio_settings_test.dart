@@ -28,10 +28,7 @@ void main() {
       }),
       const FolioSettings(liquidMotionEnabled: false),
     );
-    expect(
-      FolioSettings.fromJson(<String, Object?>{}).blurEnabled,
-      isFalse,
-    );
+    expect(FolioSettings.fromJson(<String, Object?>{}).blurEnabled, isFalse);
   });
 
   test('navigation preference round-trips independently of visual effects', () {
@@ -70,41 +67,51 @@ void main() {
     expect(FolioSettings.fromJson(<String, Object?>{}), const FolioSettings());
   });
 
-  test('startup load preserves an already changed navigation preference', () async {
-    final store = _ControlledStore();
-    final controller = FolioSettingsController(store: store);
-    addTearDown(controller.dispose);
-    final loading = controller.load();
-    controller.setShowNavigationOnScrollUp(false);
-    store.loaded.complete(const FolioSettings(
-      blurEnabled: false,
-      liquidMotionEnabled: false,
-    ));
-    await loading;
-    await controller.flush();
-    expect(controller.settings, const FolioSettings(
-      blurEnabled: false,
-      liquidMotionEnabled: false,
-      showNavigationOnScrollUp: false,
-    ));
-    expect(store.written.last, controller.settings);
-  });
+  test(
+    'startup load preserves an already changed navigation preference',
+    () async {
+      final store = _ControlledStore();
+      final controller = FolioSettingsController(store: store);
+      addTearDown(controller.dispose);
+      final loading = controller.load();
+      controller.setShowNavigationOnScrollUp(false);
+      store.loaded.complete(
+        const FolioSettings(blurEnabled: false, liquidMotionEnabled: false),
+      );
+      await loading;
+      await controller.flush();
+      expect(
+        controller.settings,
+        const FolioSettings(
+          blurEnabled: false,
+          liquidMotionEnabled: false,
+          showNavigationOnScrollUp: false,
+        ),
+      );
+      expect(store.written.last, controller.settings);
+    },
+  );
 
-  test('changing an effect during load still restores stored navigation', () async {
-    final store = _ControlledStore();
-    final controller = FolioSettingsController(store: store);
-    addTearDown(controller.dispose);
-    final loading = controller.load();
-    controller.setBlurEnabled(true);
-    store.loaded.complete(const FolioSettings(showNavigationOnScrollUp: false));
-    await loading;
-    await controller.flush();
-    expect(controller.settings, const FolioSettings(
-      blurEnabled: true,
-      showNavigationOnScrollUp: false,
-    ));
-    expect(store.written.last, controller.settings);
-  });
+  test(
+    'changing an effect during load still restores stored navigation',
+    () async {
+      final store = _ControlledStore();
+      final controller = FolioSettingsController(store: store);
+      addTearDown(controller.dispose);
+      final loading = controller.load();
+      controller.setBlurEnabled(true);
+      store.loaded.complete(
+        const FolioSettings(showNavigationOnScrollUp: false),
+      );
+      await loading;
+      await controller.flush();
+      expect(
+        controller.settings,
+        const FolioSettings(blurEnabled: true, showNavigationOnScrollUp: false),
+      );
+      expect(store.written.last, controller.settings);
+    },
+  );
 
   test('navigation changes persist across a new controller instance', () async {
     final store = MemorySettingsStore();
@@ -116,27 +123,33 @@ void main() {
     final second = FolioSettingsController(store: store);
     addTearDown(second.dispose);
     await second.load();
-    expect(second.settings, const FolioSettings(showNavigationOnScrollUp: false));
+    expect(
+      second.settings,
+      const FolioSettings(showNavigationOnScrollUp: false),
+    );
     second.setShowNavigationOnScrollUp(false);
     await second.flush();
     expect(store.saves, 1);
   });
 
-  test('navigation writes are serialized and retain the latest setting', () async {
-    final store = _ControlledStore()..blockFirstSave = true;
-    store.loaded.complete(const FolioSettings());
-    final controller = FolioSettingsController(store: store);
-    addTearDown(controller.dispose);
-    await controller.load();
-    controller.setShowNavigationOnScrollUp(false);
-    await store.firstWriteStarted.future;
-    controller.setShowNavigationOnScrollUp(true);
-    controller.setBlurEnabled(true);
-    store.firstWriteFinished.complete();
-    await controller.flush();
-    expect(store.maxConcurrentWrites, 1);
-    expect(store.written.last, const FolioSettings(blurEnabled: true));
-  });
+  test(
+    'navigation writes are serialized and retain the latest setting',
+    () async {
+      final store = _ControlledStore()..blockFirstSave = true;
+      store.loaded.complete(const FolioSettings());
+      final controller = FolioSettingsController(store: store);
+      addTearDown(controller.dispose);
+      await controller.load();
+      controller.setShowNavigationOnScrollUp(false);
+      await store.firstWriteStarted.future;
+      controller.setShowNavigationOnScrollUp(true);
+      controller.setBlurEnabled(true);
+      store.firstWriteFinished.complete();
+      await controller.flush();
+      expect(store.maxConcurrentWrites, 1);
+      expect(store.written.last, const FolioSettings(blurEnabled: true));
+    },
+  );
 
   test('disk load cannot undo user interaction during startup', () async {
     final store = _ControlledStore();
@@ -297,7 +310,10 @@ void main() {
       expect(await file.readAsString(), 'new');
       final leftovers = await directory
           .list()
-          .where((entry) => entry.path.endsWith('.tmp') || entry.path.endsWith('.bak'))
+          .where(
+            (entry) =>
+                entry.path.endsWith('.tmp') || entry.path.endsWith('.bak'),
+          )
           .toList();
       expect(leftovers, isEmpty);
     },
@@ -350,25 +366,27 @@ void main() {
     }
   });
 
-  test('restoreFromBackup recovers the file a crash left as a backup',
-      () async {
-    final directory = await Directory.systemTemp.createTemp(
-      'folio-atomic-restore-',
-    );
-    addTearDown(() => directory.delete(recursive: true));
-    final file = File('${directory.path}/cache.json');
-    await writeFileAtomically(file, 'last-good');
-    // Simulate a crash between the backup rename and the swap: the
-    // destination is absent and the last good content sits in the backup.
-    await file.rename('${file.path}.bak');
-    expect(await restoreFromBackup(file), isTrue);
-    expect(await file.readAsString(), 'last-good');
-    expect(await File('${file.path}.bak').exists(), isFalse);
-    // Nothing to restore: report false without creating anything.
-    final absent = File('${directory.path}/absent.json');
-    expect(await restoreFromBackup(absent), isFalse);
-    expect(await absent.exists(), isFalse);
-  });
+  test(
+    'restoreFromBackup recovers the file a crash left as a backup',
+    () async {
+      final directory = await Directory.systemTemp.createTemp(
+        'folio-atomic-restore-',
+      );
+      addTearDown(() => directory.delete(recursive: true));
+      final file = File('${directory.path}/cache.json');
+      await writeFileAtomically(file, 'last-good');
+      // Simulate a crash between the backup rename and the swap: the
+      // destination is absent and the last good content sits in the backup.
+      await file.rename('${file.path}.bak');
+      expect(await restoreFromBackup(file), isTrue);
+      expect(await file.readAsString(), 'last-good');
+      expect(await File('${file.path}.bak').exists(), isFalse);
+      // Nothing to restore: report false without creating anything.
+      final absent = File('${directory.path}/absent.json');
+      expect(await restoreFromBackup(absent), isFalse);
+      expect(await absent.exists(), isFalse);
+    },
+  );
 }
 
 class _ControlledStore implements FolioSettingsStore {

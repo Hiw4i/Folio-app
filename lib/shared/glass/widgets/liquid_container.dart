@@ -12,7 +12,6 @@ import 'adaptive_glass_foreground.dart';
 import 'glass_touch_shield.dart';
 import 'liquid_content.dart';
 import 'liquid_morphing_control.dart';
-import 'liquid_motion_panel.dart';
 
 /// Universal liquid substance: one widget for every liquid-glass case.
 ///
@@ -35,8 +34,7 @@ import 'liquid_motion_panel.dart';
 ///   toolbar pill), or a passive spot (`child` non-interactive).
 /// - [LiquidGlass.morph]: the same substance flowing between [collapsed] and
 ///   [expanded] rects; content cross-fades with velocity blur.
-/// - [LiquidGlass.panel]: content-sized panel; static by default. Opt into
-///   [liquidMotion] for the same shell/physics with a stationary inner body.
+/// - [LiquidGlass.panel]: content-sized static panel.
 class LiquidGlass extends StatelessWidget {
   const LiquidGlass.fixed({
     required this.child,
@@ -56,7 +54,6 @@ class LiquidGlass extends StatelessWidget {
        onExpansionChanged = null,
        borderRadius = null,
        padding = EdgeInsets.zero,
-       liquidMotion = false,
        fill = null;
 
   const LiquidGlass.morph({
@@ -77,14 +74,12 @@ class LiquidGlass extends StatelessWidget {
        shapeTokens = const LiquidShapeTokens(),
        borderRadius = null,
        padding = EdgeInsets.zero,
-       liquidMotion = false,
        fill = null;
 
   const LiquidGlass.panel({
     required this.child,
     this.borderRadius = 24,
     this.padding = EdgeInsets.zero,
-    this.liquidMotion = false,
     this.fill,
     super.key,
   }) : _kind = _LiquidKind.panel,
@@ -124,9 +119,6 @@ class LiquidGlass extends StatelessWidget {
   final double? borderRadius;
   final EdgeInsetsGeometry padding;
 
-  /// Deform only a panel's outer material; leave its inner content unchanged.
-  final bool liquidMotion;
-
   /// Background fill color for the panel. Defaults to [LiquidCase]'s default.
   final Color? fill;
 
@@ -134,18 +126,10 @@ class LiquidGlass extends StatelessWidget {
   Widget build(BuildContext context) {
     switch (_kind) {
       case _LiquidKind.panel:
-        if (liquidMotion) {
-          return LiquidMotionPanel(
-            borderRadius: borderRadius ?? 24,
-            padding: padding,
-            fill: fill,
-            child: child!,
-          );
-        }
         return LiquidCase(
           borderRadius: borderRadius ?? 24,
           padding: padding,
-          fill: fill ?? const Color(0xB31A1B1E),
+          fill: fill,
           child: child!,
         );
       case _LiquidKind.morph:

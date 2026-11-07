@@ -162,26 +162,27 @@ void main() {
     await secondSeek;
   });
 
-  testWidgets('a bridge error during seek is not fatal and unblocks the next seek', (
-    tester,
-  ) async {
-    final view = await attachReadyView();
-    view.failNextJumpWith = 1;
+  testWidgets(
+    'a bridge error during seek is not fatal and unblocks the next seek',
+    (tester) async {
+      final view = await attachReadyView();
+      view.failNextJumpWith = 1;
 
-    await renderer.seekToFraction(0.3);
-    await tester.pump();
-    expect(view.instantJumps, hasLength(1));
+      await renderer.seekToFraction(0.3);
+      await tester.pump();
+      expect(view.instantJumps, hasLength(1));
 
-    // The failed command must not wedge the coalescer: the next seek runs.
-    final retry = renderer.seekToFraction(0.8);
-    await tester.pump();
-    expect(view.instantJumps, hasLength(2));
-    expect(view.instantJumps.last, (0.8 * 9).round());
-    view.completeFirstGate();
-    await tester.pump();
-    await retry;
-    expect(tester.takeException(), isNull);
-  });
+      // The failed command must not wedge the coalescer: the next seek runs.
+      final retry = renderer.seekToFraction(0.8);
+      await tester.pump();
+      expect(view.instantJumps, hasLength(2));
+      expect(view.instantJumps.last, (0.8 * 9).round());
+      view.completeFirstGate();
+      await tester.pump();
+      await retry;
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('seeks against an unready view are dropped silently', (
     tester,

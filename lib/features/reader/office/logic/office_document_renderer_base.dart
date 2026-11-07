@@ -109,7 +109,9 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
     if (!sourceReady) {
       return ReaderSearchPhase.waitingForSource;
     }
-    return isSearching ? ReaderSearchPhase.searching : ReaderSearchPhase.complete;
+    return isSearching
+        ? ReaderSearchPhase.searching
+        : ReaderSearchPhase.complete;
   }
 
   @override
@@ -395,11 +397,15 @@ abstract class OfficeDocumentRendererBase extends ChangeNotifier
           _pendingSeekFraction = null;
           break;
         }
-        final index = (current * (positionCount - 1))
-            .round()
-            .clamp(0, positionCount - 1);
+        final index = (current * (positionCount - 1)).round().clamp(
+          0,
+          positionCount - 1,
+        );
         final snapshot = view;
-        await _runViewCommand(snapshot, () => snapshot.goToPositionInstant(index));
+        await _runViewCommand(
+          snapshot,
+          () => snapshot.goToPositionInstant(index),
+        );
         if (_disposed) {
           break;
         }

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:lucide_flutter/lucide_flutter.dart';
 
+import '../../../shared/glass/liquid_glass.dart';
+import '../../../shared/settings/folio_settings.dart';
 import '../../../shared/settings/folio_settings_controller.dart';
 import '../../../shared/settings/folio_settings_scope.dart';
 import '../../../shared/theme/folio_theme.dart';
@@ -35,6 +37,31 @@ class FolioSettingsSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: <Widget>[
             const FolioSheetSectionHeader(
+              icon: LucideIcons.sun,
+              title: 'Theme',
+            ),
+            SizedBox(height: AppSpacing.sm),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              child: LiquidSegmentedControl<FolioThemeMode>(
+                key: const ValueKey<String>('settings_theme_mode'),
+                selected: controller.settings.themeMode,
+                onSelected: controller.setThemeMode,
+                segments: <LiquidSegment<FolioThemeMode>>[
+                  for (final mode in FolioThemeMode.values)
+                    LiquidSegment<FolioThemeMode>(
+                      value: mode,
+                      label: switch (mode) {
+                        FolioThemeMode.dark => 'Dark',
+                        FolioThemeMode.light => 'Light',
+                        FolioThemeMode.system => 'System',
+                      },
+                    ),
+                ],
+              ),
+            ),
+            SizedBox(height: AppSpacing.xl),
+            const FolioSheetSectionHeader(
               icon: LucideIcons.gauge,
               title: 'Performance',
             ),
@@ -50,9 +77,7 @@ class FolioSettingsSheet extends StatelessWidget {
                 ),
                 const FolioSheetDivider(),
                 _SettingsSwitch(
-                  switchKey: const ValueKey<String>(
-                    'settings_liquid_motion',
-                  ),
+                  switchKey: const ValueKey<String>('settings_liquid_motion'),
                   title: 'Liquid motion',
                   description: 'Stretching and spring effects',
                   value: controller.settings.liquidMotionEnabled,
@@ -134,12 +159,10 @@ class _SettingsSwitch extends StatelessWidget {
           SizedBox(width: AppSpacing.lg),
           Semantics(
             label: title,
-            child: Switch.adaptive(
+            child: LiquidGlassToggle(
               key: switchKey,
               value: value,
               onChanged: onChanged,
-              activeTrackColor: const Color(0xFFD0D0CD),
-              activeThumbColor: const Color(0xFF202123),
             ),
           ),
         ],

@@ -10,7 +10,6 @@ import '../core/glass_geometry.dart';
 import '../core/liquid_shape.dart';
 import '../motion/liquid_segmented_controller.dart';
 import '../surface/glass_shell.dart';
-import '../surface/liquid_surface.dart';
 import 'adaptive_glass_foreground.dart';
 
 @immutable
@@ -142,10 +141,7 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
                 materialRect.width,
                 availableHalfWidth * 2,
               );
-              final lensHeight = math.min(
-                materialRect.height,
-                _maxLensHeight,
-              );
+              final lensHeight = math.min(materialRect.height, _maxLensHeight);
               final lensRect = Rect.fromCenter(
                 center: Offset(centerX, size.height / 2),
                 width: lensWidth,
@@ -199,7 +195,20 @@ class _LiquidSegmentedControlState<T> extends State<LiquidSegmentedControl<T>>
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: <Widget>[
-                      const Positioned.fill(child: LiquidCase.track()),
+                      // The track is a plain container — the liquid is only
+                      // the lens. No shadow, no rim, no backdrop blur here.
+                      Positioned.fill(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: context.glass.trackFill,
+                            borderRadius: BorderRadius.circular(27),
+                            border: Border.all(
+                              color: context.colors.border,
+                              width: 0.8,
+                            ),
+                          ),
+                        ),
+                      ),
                       _LiquidLens(
                         rect: lensRect,
                         motion: _motion,
@@ -347,7 +356,7 @@ class _SegmentLabel extends StatelessWidget {
                       maxLines: 1,
                       style: TextStyle(
                         fontFamily: 'Inter',
-                        color: appColors.textPrimary,
+                        color: context.colors.primary,
                         fontSize: 13.5,
                         fontWeight: selected > 0.58
                             ? FontWeight.w600

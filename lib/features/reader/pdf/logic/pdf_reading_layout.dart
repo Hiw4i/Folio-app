@@ -24,7 +24,9 @@ PdfPageLayout layoutPdfReadingPages(
   var top = gap;
   final rects = <Rect>[];
   for (final page in pages) {
-    final pageWidth = page.width.isFinite && page.width > 0 ? page.width : width;
+    final pageWidth = page.width.isFinite && page.width > 0
+        ? page.width
+        : width;
     final pageHeight = page.height.isFinite && page.height > 0
         ? page.height
         : pageWidth * 792 / 612;

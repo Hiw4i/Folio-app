@@ -8,7 +8,9 @@ import 'package:folio/features/reader/text/data/text_document.dart';
 /// Shared renderer stubs for navigation/search-state unit tests. Each stub
 /// subclasses a real renderer so adapter code is exercised against the
 /// production class shape, while state stays directly controllable.
-final MemoryDocumentContentSource _contentSource = MemoryDocumentContentSource(<String, Uint8List>{});
+final MemoryDocumentContentSource _contentSource = MemoryDocumentContentSource(
+  <String, Uint8List>{},
+);
 
 DocumentEntry stubEntry(String name) {
   final source = FileDocumentSource('/documents/$name');
@@ -44,7 +46,10 @@ class PdfRendererStub extends PdfDocumentRenderer {
 
 class TextRendererStub extends TextDocumentRenderer {
   TextRendererStub({String name = 'stub.txt'})
-    : super(document: stubEntry(name), loader: TextDocumentLoader(_contentSource));
+    : super(
+        document: stubEntry(name),
+        loader: TextDocumentLoader(_contentSource),
+      );
 
   int stubHits = 0;
 

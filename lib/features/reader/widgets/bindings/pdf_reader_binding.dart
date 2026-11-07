@@ -44,7 +44,8 @@ final class PdfReaderBinding implements ReaderBinding {
       child: PdfDocumentView(
         renderer: renderer,
         onContentTap: callbacks.onContentTap,
-        onVerticalReadingGesture: (delta) => callbacks.onReadingDrag(delta, true),
+        onVerticalReadingGesture: (delta) =>
+            callbacks.onReadingDrag(delta, true),
       ),
     );
   }

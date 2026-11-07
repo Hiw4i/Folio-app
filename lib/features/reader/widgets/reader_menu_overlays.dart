@@ -8,6 +8,9 @@ import '../../../shared/theme/folio_theme.dart';
 /// likely one sits on top — externally launched readers most often close the
 /// app, in-app readers most often return to the library.
 class ReaderExitMenu extends StatelessWidget {
+  static const closeLabel = 'Close app';
+  static const returnLabel = 'Return to main';
+
   const ReaderExitMenu({
     required this.openedExternally,
     required this.onReturnToMain,
@@ -22,12 +25,12 @@ class ReaderExitMenu extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final closeApp = _MenuAction(
-      label: 'Close app',
+      label: closeLabel,
       icon: LucideIcons.x,
       onTap: onCloseApp,
     );
     final returnToMain = _MenuAction(
-      label: 'Return to main',
+      label: returnLabel,
       icon: LucideIcons.chevronLeft,
       onTap: onReturnToMain,
     );
@@ -68,7 +71,7 @@ class ReaderMenuContent extends StatelessWidget {
             child: SizedBox(
               height: 1,
               child: AdaptiveGlassDecoration(
-                child: ColoredBox(color: appColors.separator),
+                child: ColoredBox(color: context.colors.border),
               ),
             ),
           ),
@@ -123,7 +126,7 @@ class _MenuAction extends StatelessWidget {
                       label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTextStyles.bodyStrong(context),
+                      style: AppTextStyles.body(context),
                     ),
                   ),
                 ],

@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 
 import '../../settings/folio_settings_scope.dart';
 
+import '../../theme/folio_theme.dart';
 import '../core/glass_tokens.dart';
 import 'liquid_surface_style.dart';
 
@@ -112,28 +113,71 @@ class LiquidCase extends StatelessWidget {
     required this.child,
     this.borderRadius = 24,
     this.padding = EdgeInsets.zero,
-    this.fill = const Color(0xB31A1B1E),
+    this.fill,
     super.key,
   });
-
-  /// Translucent track behind a moving lens (segmented control).
-  const LiquidCase.track({super.key})
-    : child = const SizedBox.expand(),
-      borderRadius = 27,
-      padding = EdgeInsets.zero,
-      fill = const Color(0x161A1B1D);
 
   final Widget child;
   final double borderRadius;
   final EdgeInsetsGeometry padding;
-  final Color fill;
+
+  /// Explicit fill override; null resolves to the theme's translucent
+  /// surface fill.
+  final Color? fill;
 
   @override
   Widget build(BuildContext context) {
     final blurEnabled = FolioSettingsScope.blurEnabledOf(context);
+    final glass = context.glass;
+    final resolvedFill = fill ?? glass.surfaceFill;
+    final effectiveFill = blurEnabled ? resolvedFill : glass.opaqueFill;
+    // Whether the backdrop pipeline exists at all is decided by the USE-CASE
+    // fill, not by the blur setting: an opaque surface (the settings sheet)
+    // never mounts a filter — nothing can show through and a mounted one
+    // would sample the backdrop — while translucent surfaces keep theirs
+    // mounted across blur toggles so their content never remounts.
+    final opaque = resolvedFill.a >= 1.0;
     final radius = BorderRadius.circular(borderRadius);
     final transitionBlur = LiquidBlurScope.maybeOf(context);
     final transitionOpacity = LiquidBlurScope.maybeOpacityOf(context) ?? 1.0;
+
+    Widget body = Opacity(
+      opacity: transitionOpacity,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: effectiveFill,
+          borderRadius: radius,
+          gradient: blurEnabled && !opaque
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: glass.overlayColors,
+                )
+              : null,
+        ),
+        child: CustomPaint(
+          foregroundPainter: LiquidCaseRimPainter(
+            radius: radius,
+            rimColors: glass.rimColors,
+          ),
+          child: Padding(padding: padding, child: child),
+        ),
+      ),
+    );
+    // Opaque fills mount no backdrop filter at all: nothing can show through,
+    // and a mounted filter would sample the backdrop underneath (the sheet
+    // would read as translucent). Translucent fills keep the filter mounted
+    // across blur toggles so panel content never remounts; `enabled: false`
+    // makes it a zero-cost passthrough while blur is off.
+    if (!opaque) {
+      body = BackdropFilter.grouped(
+        enabled: blurEnabled,
+        filter: transitionBlur == null
+            ? LiquidBlur.filter
+            : LiquidBlur.filterFor(transitionBlur),
+        child: body,
+      );
+    }
     return RepaintBoundary(
       child: DecoratedBox(
         decoration: BoxDecoration(
@@ -142,51 +186,26 @@ class LiquidCase extends StatelessWidget {
           boxShadow: !blurEnabled
               ? const <BoxShadow>[]
               : transitionOpacity >= 0.999
-              ? const <BoxShadow>[
+              ? <BoxShadow>[
                   BoxShadow(
-                    color: Color(0x4D020809),
+                    color: LiquidShadows.color.withValues(
+                      alpha: LiquidShadows.opacity,
+                    ),
                     blurRadius: 22,
-                    offset: Offset(0, 8),
+                    offset: const Offset(0, 8),
                   ),
                 ]
               : <BoxShadow>[
                   BoxShadow(
-                    color: const Color(0xFF020809)
-                        .withValues(alpha: (0x4D / 255) * transitionOpacity),
+                    color: LiquidShadows.color.withValues(
+                      alpha: LiquidShadows.opacity * transitionOpacity,
+                    ),
                     blurRadius: 22,
                     offset: const Offset(0, 8),
                   ),
                 ],
         ),
-        child: ClipRRect(
-          borderRadius: radius,
-          child: BackdropFilter.grouped(
-            enabled: blurEnabled,
-            filter: !blurEnabled || transitionBlur == null
-                ? LiquidBlur.filter
-                : LiquidBlur.filterFor(transitionBlur),
-            child: Opacity(
-              opacity: transitionOpacity,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: blurEnabled ? fill : LiquidSurfaceStyle.opaqueFill,
-                  borderRadius: radius,
-                  gradient: blurEnabled
-                      ? const LinearGradient(
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                          colors: <Color>[Color(0x1FFFFFFF), Color(0x08FFFFFF)],
-                        )
-                      : null,
-                ),
-                child: CustomPaint(
-                  foregroundPainter: LiquidCaseRimPainter(radius: radius),
-                  child: Padding(padding: padding, child: child),
-                ),
-              ),
-            ),
-          ),
-        ),
+        child: ClipRRect(borderRadius: radius, child: body),
       ),
     );
   }

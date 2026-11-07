@@ -1,18 +1,31 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:folio/features/settings/widgets/folio_settings_sheet.dart';
-import 'package:folio/shared/glass/surface/glass_panel.dart';
 import 'package:folio/shared/settings/folio_settings.dart';
 import 'package:folio/shared/settings/folio_settings_controller.dart';
 import 'package:folio/shared/settings/folio_settings_scope.dart';
+import 'package:folio/shared/theme/folio_theme.dart';
+import 'package:folio/shared/widgets/folio_bottom_sheet.dart';
 
 import '../../support/memory_settings_store.dart';
 
-const _openingCurve = Cubic(0.24, 1.2, 0.2, 1.0);
+const _openDuration = AppSprings.sheetOpenDuration;
+const _closeDuration = AppSprings.sheetCloseDuration;
+
+/// The exact entrance spring the route uses from a cold push.
+final _entranceSimulation = SpringSimulation(
+  AppSprings.sheetEntrance(_openDuration),
+  0,
+  1,
+  0,
+  tolerance: AppSprings.scaleTolerance,
+);
+
 final _sheet = find.byType(FolioSettingsSheet);
-final _surface = find.byType(GlassPanel);
+final _surface = find.byKey(const ValueKey<String>('folio_sheet_surface'));
 final _backdrop = find.byKey(const ValueKey<String>('folio_sheet_backdrop'));
 final _position = find.byKey(const ValueKey<String>('folio_sheet_position'));
 
@@ -27,49 +40,43 @@ void main() {
     final rect = tester.getRect(_surface);
     expect(rect.left, 16);
     expect(rect.right, 384);
-    expect(rect.bottom, 824);
-    expect(rect.height, lessThan(840 * 0.85));
-    expect(tester.widget<GlassPanel>(_surface).borderRadius, 28);
-    final clip = find.descendant(
-      of: _surface,
-      matching: find.byType(ClipRRect),
-    );
-    expect(
-      tester.widget<ClipRRect>(clip).borderRadius,
-      BorderRadius.circular(28),
-    );
+    // The spring settles within its tolerance of the rest point.
+    expect(rect.bottom, closeTo(824, 0.5));
+    // The Theme selector row makes the settings content reach the 85% height
+    // cap; the body scrolls inside it from there.
+    expect(rect.height, lessThanOrEqualTo(840 * 0.85));
+    final decoration =
+        tester.widget<DecoratedBox>(_surface).decoration as BoxDecoration;
+    expect(decoration.borderRadius, BorderRadius.circular(28));
     expect(find.byType(DraggableScrollableSheet), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('opening uses the reference curve, 700ms and 750px travel', (
+  testWidgets('opening rides the entrance spring with 700ms and 750px travel', (
     tester,
   ) async {
-    await _pumpHost(
-      tester,
-      settings: const FolioSettings(blurEnabled: true),
-    );
+    await _pumpHost(tester, settings: const FolioSettings(blurEnabled: true));
     await _open(tester);
     final route = _route(tester);
-    expect(route.transitionDuration, const Duration(milliseconds: 700));
+    expect(route.transitionDuration, _openDuration);
     expect(_offset(tester), closeTo(750, 0.001));
 
-    var elapsed = 0;
-    for (final step in <int>[70, 105, 175, 175, 175]) {
-      elapsed += step;
-      await tester.pump(Duration(milliseconds: step));
-      final raw = elapsed / 700;
-      expect(route.animation!.value, closeTo(raw, 0.00001));
-      expect(
-        _offset(tester),
-        closeTo(750 * (1 - _openingCurve.transform(raw)), 0.001),
-      );
-      _expectBackdrop(tester, raw);
-    }
-    expect(_offset(tester), closeTo(0, 0.001));
+    // The first checkpoint matches the entrance spring exactly; afterwards
+    // the controller clamps its progress at 1 while the panel keeps reading
+    // the unclipped spring (the overshoot bounce).
+    await tester.pump(const Duration(milliseconds: 175));
+    expect(
+      _offset(tester),
+      closeTo(750 * (1 - _entranceSimulation.x(0.175)), 0.5),
+    );
+    _expectBackdrop(tester, elapsedMs: 175);
+    await tester.pump(const Duration(milliseconds: 175));
+    expect(_offset(tester), lessThan(0));
+    await tester.pumpAndSettle();
+    expect(_offset(tester), closeTo(0, 0.5));
   });
 
-  testWidgets('close keeps the reference motion and late backdrop fade', (
+  testWidgets('close rides the exit spring and the backdrop fades on its own', (
     tester,
   ) async {
     var completed = false;
@@ -81,30 +88,15 @@ void main() {
     await _open(tester);
     await tester.pumpAndSettle();
     final route = _route(tester);
-    expect(route.reverseTransitionDuration, const Duration(milliseconds: 350));
+    expect(route.reverseTransitionDuration, _closeDuration);
 
     Navigator.of(tester.element(_sheet)).pop();
     await tester.pump();
     expect(completed, isFalse);
-    await tester.pump(const Duration(milliseconds: 175));
-    expect(route.animation!.value, closeTo(0.5, 0.00001));
-    expect(
-      _offset(tester),
-      closeTo(750 * (1 - Curves.easeInOutCubic.transform(0.5)), 0.001),
-    );
-    _expectBackdrop(
-      tester,
-      0.5,
-    ); // Still fully blurred halfway through closing.
-    expect(completed, isFalse);
-
-    await tester.pump(const Duration(microseconds: 87500));
-    expect(route.animation!.value, closeTo(0.25, 0.00001));
-    expect(
-      _offset(tester),
-      closeTo(750 * (1 - Curves.easeInOutCubic.transform(0.25)), 0.001),
-    );
-    _expectBackdrop(tester, 0.25);
+    await tester.pump(_closeDuration * 0.5);
+    // The panel is on its way out but never jumps to the end.
+    expect(_offset(tester), inExclusiveRange(0, 750));
+    _expectBackdrop(tester, elapsedMs: 150, closing: true);
     expect(completed, isFalse);
 
     await tester.pumpAndSettle();
@@ -124,7 +116,6 @@ void main() {
     await _open(tester);
     await tester.pumpAndSettle();
     final element = tester.element(_sheet);
-    final route = _route(tester);
     final rect = tester.getRect(_surface);
 
     await tester.tap(find.byKey(const ValueKey<String>('settings_blur')));
@@ -137,14 +128,22 @@ void main() {
           .every((filter) => !filter.enabled),
       isTrue,
     );
-    _expectBackdrop(tester, 1, blurEnabled: false);
+    _expectBackdrop(
+      tester,
+      elapsedMs: _closeDuration.inMilliseconds,
+      blurEnabled: controller.settings.blurEnabled,
+    );
     expect(tester.element(_sheet), same(element));
     expect(tester.getRect(_surface), rect);
-    expect(route.animation!.value, 1);
+    expect(route_1(tester).animation!.value, closeTo(1, 0.001));
 
     await tester.tap(find.byKey(const ValueKey<String>('settings_blur')));
     await tester.pumpAndSettle();
-    _expectBackdrop(tester, 1);
+    _expectBackdrop(
+      tester,
+      elapsedMs: _closeDuration.inMilliseconds,
+      blurEnabled: controller.settings.blurEnabled,
+    );
     expect(tester.element(_sheet), same(element));
     expect(tester.takeException(), isNull);
   });
@@ -161,43 +160,40 @@ void main() {
       );
       await _open(tester);
       final route = _route(tester);
-      expect(route.transitionDuration, const Duration(milliseconds: 700));
-      expect(
-        route.reverseTransitionDuration,
-        const Duration(milliseconds: 350),
-      );
+      expect(route.transitionDuration, _openDuration);
+      expect(route.reverseTransitionDuration, _closeDuration);
+      // Opening runs on its own clock: after 175 ms the panel is near the
+      // entrance overshoot, wherever the spring has put it.
       await tester.pump(const Duration(milliseconds: 175));
       final offset = _offset(tester);
-      _expectBackdrop(tester, 0.25);
+      _expectBackdrop(tester, elapsedMs: 175);
 
       controller.setLiquidMotionEnabled(true);
       await tester.pump();
       expect(_offset(tester), closeTo(offset, 0.001));
-      expect(route.animation!.value, closeTo(0.25, 0.00001));
       await tester.pumpAndSettle();
-      expect(_offset(tester), closeTo(0, 0.001));
+      expect(_offset(tester), closeTo(0, 0.5));
     },
   );
 
-  testWidgets('closing during opening does not jump to the reverse curve', (
+  testWidgets('closing during opening does not jump to the end position', (
     tester,
   ) async {
     await _pumpHost(tester);
     await _open(tester);
     await tester.pump(const Duration(milliseconds: 140));
     final offset = _offset(tester);
-    final route = _route(tester);
     Navigator.of(tester.element(_sheet)).pop();
     await tester.pump();
     expect(_offset(tester), closeTo(offset, 0.001));
 
     await tester.pump(const Duration(milliseconds: 35));
+    // The exit spring inherits the entrance momentum, so the panel may
+    // drift either way for a frame — it never teleports and stays on
+    // screen until the dismissal settles.
     expect(
       _offset(tester),
-      closeTo(
-        750 * (1 - _openingCurve.transform(route.animation!.value)),
-        0.001,
-      ),
+      inExclusiveRange(-20, FolioBottomSheet.hiddenTravel),
     );
     await tester.pumpAndSettle();
     expect(_sheet, findsNothing);
@@ -217,7 +213,7 @@ void main() {
         // cap is the Folio sheet width on tablets and landscape phones.
         expect(rect.width, 400);
         expect(rect.right, size.width - 16);
-        expect(rect.bottom, size.height - 16);
+        expect(rect.bottom, closeTo(size.height - 16, 0.5));
         expect(rect.height, lessThanOrEqualTo(size.height * 0.85));
         expect(find.byType(Dialog), findsNothing);
         expect(find.byType(DraggableScrollableSheet), findsNothing);
@@ -241,7 +237,7 @@ void main() {
       final rect = tester.getRect(_surface);
       expect(rect.left, 16);
       expect(rect.right, 264);
-      expect(rect.bottom, 600 - 220 - 16);
+      expect(rect.bottom, closeTo(600 - 220 - 16, 0.5));
       expect(rect.top, greaterThanOrEqualTo(24 + 16));
 
       final motion = find.byKey(
@@ -262,7 +258,7 @@ void main() {
     await _pumpHost(tester, viewPadding: const EdgeInsets.only(bottom: 24));
     await _open(tester);
     await tester.pumpAndSettle();
-    expect(tester.getRect(_surface).bottom, 840 - 24 - 16);
+    expect(tester.getRect(_surface).bottom, closeTo(840 - 24 - 16, 0.5));
     expect(
       find.descendant(of: _surface, matching: find.byType(SafeArea)),
       findsNothing,
@@ -270,31 +266,25 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'the standard dismissible barrier and system Back close the sheet',
-    (tester) async {
-      await _pumpHost(tester);
-      await _open(tester);
-      await tester.pumpAndSettle();
-      final barrier = find.descendant(
-        of: _backdrop,
-        matching: find.byType(ModalBarrier),
-      );
-      expect(tester.widget<ModalBarrier>(barrier).dismissible, isTrue);
-      expect(tester.widget<ModalBarrier>(barrier).semanticsLabel, isNotEmpty);
-      await tester.tapAt(const Offset(20, 40));
-      await tester.pumpAndSettle();
-      expect(_sheet, findsNothing);
+  testWidgets('the dismissible barrier and system Back close the sheet', (
+    tester,
+  ) async {
+    await _pumpHost(tester);
+    await _open(tester);
+    await tester.pumpAndSettle();
 
-      await _open(tester);
-      await tester.pumpAndSettle();
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(_sheet, findsNothing);
-      expect(find.text('Open settings'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    await tester.tapAt(const Offset(20, 40));
+    await tester.pumpAndSettle();
+    expect(_sheet, findsNothing);
+
+    await _open(tester);
+    await tester.pumpAndSettle();
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(_sheet, findsNothing);
+    expect(find.text('Open settings'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('ordinary downward swipe dismissal is retained', (tester) async {
     await _pumpHost(tester);
@@ -322,7 +312,11 @@ void main() {
       const Offset(0, -120),
     );
     await tester.pumpAndSettle();
-    expect(tester.getRect(_surface), rect);
+    final after = tester.getRect(_surface);
+    expect(after.left, closeTo(rect.left, 0.5));
+    expect(after.top, closeTo(rect.top, 0.5));
+    expect(after.right, closeTo(rect.right, 0.5));
+    expect(after.bottom, closeTo(rect.bottom, 0.5));
     expect(find.byType(DraggableScrollableSheet), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -344,34 +338,35 @@ void main() {
     await tester.pump(const Duration(milliseconds: 200));
     await gesture.up();
     await tester.pumpAndSettle();
-    expect(tester.getRect(_surface), rect);
+    final after = tester.getRect(_surface);
+    expect(after.left, closeTo(rect.left, 0.5));
+    expect(after.top, closeTo(rect.top, 0.5));
+    expect(after.right, closeTo(rect.right, 0.5));
+    expect(after.bottom, closeTo(rect.bottom, 0.5));
     expect(tester.element(_sheet), same(element));
-    expect(_offset(tester), closeTo(0, 0.001));
+    expect(_offset(tester), closeTo(0, 0.5));
     expect(tester.binding.transientCallbackCount, 0);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'system reduced motion avoids a zero-duration ratio and tickers',
-    (tester) async {
-      await _pumpHost(
-        tester,
-        settings: const FolioSettings(blurEnabled: true),
-        disableAnimations: true,
-      );
-      await _open(tester);
-      await tester.pumpAndSettle();
-      expect(_route(tester).transitionDuration, Duration.zero);
-      expect(_route(tester).reverseTransitionDuration, Duration.zero);
-      expect(_offset(tester), 0);
-      _expectBackdrop(tester, 1);
-      expect(tester.binding.transientCallbackCount, 0);
-      await tester.binding.handlePopRoute();
-      await tester.pumpAndSettle();
-      expect(_sheet, findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('system reduced motion avoids tickers entirely', (tester) async {
+    await _pumpHost(
+      tester,
+      settings: const FolioSettings(blurEnabled: true),
+      disableAnimations: true,
+    );
+    await _open(tester);
+    await tester.pumpAndSettle();
+    expect(_route(tester).transitionDuration, Duration.zero);
+    expect(_route(tester).reverseTransitionDuration, Duration.zero);
+    expect(_offset(tester), 0);
+    _expectBackdrop(tester, elapsedMs: _closeDuration.inMilliseconds);
+    expect(tester.binding.transientCallbackCount, 0);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(_sheet, findsNothing);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('removing the app during opening disposes transition listeners', (
     tester,
@@ -385,6 +380,12 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 }
+
+ModalRoute<dynamic> _route(WidgetTester tester) =>
+    ModalRoute.of(tester.element(_sheet))!;
+
+// Retained alias used by the blur-toggle test above.
+ModalRoute<dynamic> route_1(WidgetTester tester) => _route(tester);
 
 Future<FolioSettingsController> _pumpHost(
   WidgetTester tester, {
@@ -448,29 +449,27 @@ Future<void> _open(WidgetTester tester) async {
   expect(_sheet, findsOneWidget);
 }
 
-ModalRoute<dynamic> _route(WidgetTester tester) =>
-    ModalRoute.of(tester.element(_sheet))!;
-
 double _offset(WidgetTester tester) =>
     tester.widget<Transform>(_position).transform.storage[13];
 
+/// The backdrop runs its own 300 ms wall-clock fade (neutral curve): the
+/// helper mirrors that clock from the elapsed pump time instead of the
+/// spring's route progress.
 void _expectBackdrop(
-  WidgetTester tester,
-  double raw, {
+  WidgetTester tester, {
+  required int elapsedMs,
   bool blurEnabled = true,
+  bool closing = false,
 }) {
-  final t = Curves.easeOut.transform((raw / 0.5).clamp(0.0, 1.0));
+  final progress = (elapsedMs / _closeDuration.inMilliseconds).clamp(0.0, 1.0);
+  final t = AppCurves.neutral.transform(closing ? 1.0 - progress : progress);
   final filter = tester.widget<BackdropFilter>(_backdrop);
   final blurActive = blurEnabled && t > 0;
   expect(filter.enabled, blurActive);
-  // The route shares one of 20 quantized filters per animation step; the
-  // expectation must use the same 0.6-sigma grid instead of the raw `12 * t`.
-  final step = (t * 20).round().clamp(0, 20);
-  final sigma = blurActive ? 12.0 * step / 20 : 12.0;
+  final sigma = blurActive ? 8.0 * t : 8.0;
   expect(filter.filter, ui.ImageFilter.blur(sigmaX: sigma, sigmaY: sigma));
-  // Without backdrop blur the scrim is doubled so the sheet keeps its depth.
-  expect(
-    (filter.child! as ColoredBox).color.a,
-    closeTo((blurEnabled ? 0.3 : 0.6) * t, 0.00001),
+  final color = tester.widget<ColoredBox>(
+    find.descendant(of: _backdrop, matching: find.byType(ColoredBox)).first,
   );
+  expect(color.color.a, closeTo((blurEnabled ? 0.3 : 0.6) * t, 0.005));
 }

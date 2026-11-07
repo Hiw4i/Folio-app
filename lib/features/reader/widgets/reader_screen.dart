@@ -8,7 +8,11 @@ import 'package:lucide_flutter/lucide_flutter.dart';
 import '../../../shared/glass/liquid_glass.dart';
 import '../../../shared/settings/folio_settings_scope.dart';
 import '../../../shared/theme/folio_theme.dart';
+import '../../../shared/widgets/info_notice/info_notice_tooltip.dart';
 import '../../library/data/document_entry.dart';
+import '../../tutorial/tutorial_catalog.dart';
+import '../../tutorial/widgets/tutorial_scope.dart';
+import '../../tutorial/widgets/tutorial_swipe_up_cue.dart';
 import '../data/document_content_source.dart';
 import '../logic/chrome_visibility.dart';
 import '../logic/document_renderer.dart';
@@ -34,6 +38,7 @@ class ReaderScreen extends StatefulWidget {
     this.onDisposed,
     this.openedExternally = false,
     this.onReturnToMain,
+    this.tutorialHintsEnabled = true,
     super.key,
   }) : assert(
          !openedExternally || onReturnToMain != null,
@@ -62,6 +67,9 @@ class ReaderScreen extends StatefulWidget {
   /// Reveals the library beneath an externally launched reader. The reader is
   /// the home-route child rather than a route, so this is not a Navigator pop.
   final VoidCallback? onReturnToMain;
+
+  /// The external reader becomes interactive after its opening transition.
+  final bool tutorialHintsEnabled;
 
   @override
   State<ReaderScreen> createState() => _ReaderScreenState();
@@ -109,7 +117,9 @@ class _ReaderScreenState extends State<ReaderScreen>
   bool _textSelectionActive = false;
   bool _chromeReducedMotion = false;
   final ChromeScrollIntentAccumulator _scrollIntent =
-      ChromeScrollIntentAccumulator(threshold: ReaderChromeSpec.scrollIntentDistance);
+      ChromeScrollIntentAccumulator(
+        threshold: ReaderChromeSpec.scrollIntentDistance,
+      );
   bool _showNavigationOnScrollUp = true;
 
   @override
@@ -200,7 +210,8 @@ class _ReaderScreenState extends State<ReaderScreen>
     }
     // The surface overlay (PPTX slide overview) covers the whole screen, so
     // even an expanded search must not keep the chrome floating above it.
-    final shouldShow = !_scrubbing &&
+    final shouldShow =
+        !_scrubbing &&
         !_surfaceOverlayOpen &&
         (_chromeTarget || _searchExpanded);
     if (shouldShow) {
@@ -239,6 +250,11 @@ class _ReaderScreenState extends State<ReaderScreen>
     }
     setState(() => _surfaceOverlayOpen = open);
     if (open) {
+      // The PPTX deck hosts the overview; the shell learns about the
+      // swipe here, so the swipe-up tour completes at the same moment.
+      if (widget.document.format == DocumentFormat.pptx) {
+        TutorialScope.complete(context, TutorialTour.pptxOverview);
+      }
       _chromeTargetBeforeOverlay = _chromeTarget;
       _setChromeTarget(false);
     } else {
@@ -373,7 +389,11 @@ class _ReaderScreenState extends State<ReaderScreen>
       }
       return;
     }
-    switch (_scrollIntent.record(delta, visible: _chromeTarget, canHide: canHide)) {
+    switch (_scrollIntent.record(
+      delta,
+      visible: _chromeTarget,
+      canHide: canHide,
+    )) {
       case ChromeVisibilityCommand.hide:
         _setChromeTarget(false);
       case ChromeVisibilityCommand.show:
@@ -526,11 +546,6 @@ class _ReaderScreenState extends State<ReaderScreen>
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final reducedMotion = media.disableAnimations;
-    final navigatorFadeDuration = reducedMotion
-        ? Duration.zero
-        : AppDurations.fastest;
     return PopScope<void>(
       canPop: !_menuOpen && !_exitOpen && !_infoOpen && !_surfaceOverlayOpen,
       onPopInvokedWithResult: (didPop, result) {
@@ -550,260 +565,299 @@ class _ReaderScreenState extends State<ReaderScreen>
       },
       child: ColoredBox(
         key: const ValueKey<String>('reader_surface'),
-        color: appColors.background,
-        child: Stack(
-          fit: StackFit.expand,
-          children: <Widget>[
-            const ReaderBackground(),
-            Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: _contentPointerDown,
-              onPointerMove: _contentPointerMove,
-              onPointerUp: _contentPointerUp,
-              onPointerCancel: _contentPointerCancel,
-              child: NotificationListener<ScrollNotification>(
-                onNotification: _onScrollNotification,
-                child: AnimatedBuilder(
-                  animation: _renderer,
-                  builder: (context, child) => _buildDocumentSurface(),
+        color: context.colors.background,
+        child: _readerStack(),
+      ),
+    );
+  }
+
+  Widget _readerStack() {
+    final media = MediaQuery.of(context);
+    final hintsVisible =
+        widget.tutorialHintsEnabled &&
+        (ModalRoute.isCurrentOf(context) ?? true) &&
+        !_menuOpen &&
+        !_exitOpen &&
+        !_infoOpen &&
+        !_surfaceOverlayOpen &&
+        !_searchExpanded;
+    final needsCloseHint =
+        widget.openedExternally &&
+        TutorialScope.shouldShow(context, TutorialTour.externalClose);
+    final showSwipeHint =
+        hintsVisible &&
+        !needsCloseHint &&
+        widget.document.format == DocumentFormat.pptx &&
+        TutorialScope.shouldShow(context, TutorialTour.pptxOverview);
+    final navigatorFadeDuration = media.disableAnimations
+        ? Duration.zero
+        : AppDurations.fastest;
+    return Stack(
+      fit: StackFit.expand,
+      // The parent ColoredBox already paints the flat background; the old
+      // vertical vignette is gone by design.
+      children: <Widget>[
+        Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: _contentPointerDown,
+          onPointerMove: _contentPointerMove,
+          onPointerUp: _contentPointerUp,
+          onPointerCancel: _contentPointerCancel,
+          child: NotificationListener<ScrollNotification>(
+            onNotification: _onScrollNotification,
+            child: AnimatedBuilder(
+              animation: _renderer,
+              builder: (context, child) => _buildDocumentSurface(),
+            ),
+          ),
+        ),
+        if (showSwipeHint)
+          ListenableBuilder(
+            listenable: _renderer,
+            builder: (context, child) =>
+                _renderer.loadState == ReaderLoadState.ready
+                ? const TutorialSwipeUpCue()
+                : const SizedBox.shrink(),
+          ),
+        BackdropGroup(
+          child: Stack(
+            fit: StackFit.expand,
+            children: <Widget>[
+              Positioned(
+                key: const ValueKey<String>('reader_top_chrome'),
+                left: 16,
+                right: 16,
+                top: media.viewPadding.top + 10,
+                height: 50,
+                child: ReaderChromeShell(
+                  progress: _chromeProgress,
+                  hiddenDy: ReaderChromeSpec.topHiddenDy,
+                  child: _TopChromeContent(document: widget.document),
                 ),
               ),
-            ),
-            BackdropGroup(
-              child: Stack(
-                fit: StackFit.expand,
-                children: <Widget>[
-                  Positioned(
-                    key: const ValueKey<String>('reader_top_chrome'),
-                    left: 16,
-                    right: 16,
-                    top: media.viewPadding.top + 10,
-                    height: 50,
-                    child: ReaderChromeShell(
-                      progress: _chromeProgress,
-                      hiddenDy: ReaderChromeSpec.topHiddenDy,
-                      child: _TopChromeContent(document: widget.document),
-                    ),
+              Positioned(
+                left: 20,
+                bottom: media.viewInsets.bottom + media.viewPadding.bottom + 28,
+                child: ReaderChromeShell(
+                  progress: _chromeProgress,
+                  hiddenDy: ReaderChromeSpec.pillHiddenDy,
+                  child: AnimatedBuilder(
+                    animation: _binding.navigation,
+                    builder: (context, child) {
+                      return ReaderProgressPill(
+                        key: const ValueKey<String>('reader_progress_glass'),
+                        label: _binding.navigation.snapshot.positionLabel,
+                      );
+                    },
                   ),
-                  Positioned(
-                    left: 20,
-                    bottom:
-                        media.viewInsets.bottom + media.viewPadding.bottom + 28,
-                    child: ReaderChromeShell(
-                      progress: _chromeProgress,
-                      hiddenDy: ReaderChromeSpec.pillHiddenDy,
-                      child: AnimatedBuilder(
-                        animation: _binding.navigation,
-                        builder: (context, child) {
-                          return ReaderProgressPill(
-                            key: const ValueKey<String>('reader_progress_glass'),
-                            label: _binding.navigation.snapshot.positionLabel,
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    key: const ValueKey<String>('reader_scrubber_slot'),
-                    right: 0,
-                    top: media.viewPadding.top + 76,
-                    bottom:
-                        media.viewInsets.bottom +
-                        media.viewPadding.bottom +
-                        120,
-                    width: 110,
-                    child: ReaderScrubber(
-                      navigation: _binding.navigation,
-                      onScrubStateChanged: _handleScrubbingChanged,
-                    ),
-                  ),
-                  Positioned(
-                    left: 0,
-                    right: 0,
-                    bottom: media.viewInsets.bottom,
-                    height:
-                        LiquidSearchControlState.height +
-                        media.viewPadding.bottom,
-                    child: ReaderChromeShell(
-                      progress: _chromeProgress,
-                      hiddenDy: ReaderChromeSpec.bottomHiddenDy,
-                      child: LiquidSearchControl(
-                        key: _searchKey,
-                        hintText: 'Search in document',
-                        semanticsLabel: 'Search in document',
-                        onChanged: _searchChanged,
-                        onSubmitted: (_) {
-                          if (_renderer.hitCount > 0) {
-                            _renderer.showNextHit();
-                          }
-                        },
-                        onExpansionChanged: (expanded) {
-                          if (!mounted || _searchExpanded == expanded) {
-                            return;
-                          }
-                          setState(() => _searchExpanded = expanded);
-                          _driveChrome();
-                        },
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      ignoring: _menuOpen,
-                      child: ReaderChromeShell(
-                        progress: _chromeProgress,
-                        hiddenDy: ReaderChromeSpec.topHiddenDy,
-                        child: LiquidMorphingControl(
-                          key: _exitKey,
-                          collapsedHitKey: const ValueKey<String>(
-                            'reader_back_button',
-                          ),
-                          collapsedSemanticsLabel: widget.openedExternally
-                              ? 'Close app'
-                              : 'Back to library',
-                          expandedSemanticsLabel: 'Navigation options',
-                          onCollapsedTap: _handleBackButton,
-                          geometryBuilder: (viewport) {
-                            final top = media.viewPadding.top + 10;
-                            return LiquidMorphGeometry(
-                              collapsedRect: Rect.fromLTWH(16, top, 48, 48),
-                              expandedRect: Rect.fromLTWH(16, top, 226, 112),
-                              expandedCornerRadius: 24,
-                            );
-                          },
-                          collapsedChild: Center(
-                            child: AdaptiveGlassIcon(
-                              widget.openedExternally
-                                  ? LucideIcons.x
-                                  : LucideIcons.chevronLeft,
-                              size: 24,
-                            ),
-                          ),
-                          expandedChild: ReaderExitMenu(
-                            openedExternally: widget.openedExternally,
-                            onReturnToMain: _returnToMain,
-                            onCloseApp: _closeApp,
-                          ),
-                          onExpansionChanged: (expanded) {
-                            if (!mounted || _exitOpen == expanded) {
-                              return;
-                            }
-                            if (expanded) {
-                              _menuKey.currentState?.close();
-                            }
-                            setState(() => _exitOpen = expanded);
-                            if (expanded) {
-                              _setChromeTarget(true);
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      ignoring: _exitOpen,
-                      child: ReaderChromeShell(
-                        progress: _chromeProgress,
-                        hiddenDy: ReaderChromeSpec.topHiddenDy,
-                        child: LiquidMorphingControl(
-                          key: _menuKey,
-                          collapsedHitKey: const ValueKey<String>(
-                            'reader_menu_button',
-                          ),
-                          collapsedSemanticsLabel: 'Document menu',
-                          expandedSemanticsLabel: 'Document menu',
-                          geometryBuilder: (viewport) {
-                            final top = media.viewPadding.top + 10;
-                            return LiquidMorphGeometry(
-                              collapsedRect: Rect.fromLTWH(
-                                viewport.width - 64,
-                                top,
-                                48,
-                                48,
-                              ),
-                              expandedRect: Rect.fromLTWH(
-                                viewport.width - 242,
-                                top,
-                                226,
-                                // Two 48px rows, a 1px divider and the shared
-                                // 8px vertical padding: 113, not 112. The menu
-                                // column overflowed by exactly the missing pixel.
-                                113,
-                              ),
-                              expandedCornerRadius: 24,
-                            );
-                          },
-                          collapsedChild: const Center(child: ReaderMenuGlyph()),
-                          expandedChild: ReaderMenuContent(
-                            onFileInfo: () => unawaited(_openFileInfo()),
-                            onRemove: () {
-                              _menuKey.currentState?.close();
-                              unawaited(widget.onRemoveFromRecents());
-                            },
-                          ),
-                          onExpansionChanged: (expanded) {
-                            if (!mounted || _menuOpen == expanded) {
-                              return;
-                            }
-                            if (expanded) {
-                              _exitKey.currentState?.close();
-                            }
-                            setState(() => _menuOpen = expanded);
-                            if (expanded) {
-                              _setChromeTarget(true);
-                            }
-                          },
-                        ),
-                      ),
-                    ),
-                  ),
-                  Positioned(
-                    right: 20,
-                    bottom:
-                        media.viewInsets.bottom +
-                        media.viewPadding.bottom +
-                        102,
-                    child: ReaderChromeShell(
-                      progress: _chromeProgress,
-                      hiddenDy: ReaderChromeSpec.pillHiddenDy,
-                      child: AnimatedBuilder(
-                        animation: _renderer,
-                        builder: (context, child) {
-                          final hasQuery = _renderer.query.trim().isNotEmpty;
-                          final gated =
-                              hasQuery &&
-                              !_menuOpen &&
-                              !_exitOpen &&
-                              !_infoOpen;
-                          return TweenAnimationBuilder<double>(
-                            tween: Tween<double>(end: gated ? 1 : 0),
-                            duration: navigatorFadeDuration,
-                            curve: gated
-                                ? ReaderChromeSpec.showCurve
-                                : ReaderChromeSpec.hideCurve,
-                            builder: (context, opacity, child) =>
-                                LiquidFade(opacity: opacity, child: child!),
-                            child: IgnorePointer(
-                              ignoring: !gated,
-                              child: ExcludeSemantics(
-                                excluding: !gated,
-                                child: hasQuery
-                                    ? ReaderSearchNavigator(renderer: _renderer)
-                                    : const SizedBox.shrink(),
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
+              Positioned(
+                key: const ValueKey<String>('reader_scrubber_slot'),
+                right: 0,
+                top: media.viewPadding.top + 76,
+                bottom:
+                    media.viewInsets.bottom + media.viewPadding.bottom + 120,
+                width: 110,
+                child: ReaderScrubber(
+                  navigation: _binding.navigation,
+                  onScrubStateChanged: _handleScrubbingChanged,
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: media.viewInsets.bottom,
+                height:
+                    LiquidSearchControlState.height + media.viewPadding.bottom,
+                child: ReaderChromeShell(
+                  progress: _chromeProgress,
+                  hiddenDy: ReaderChromeSpec.bottomHiddenDy,
+                  child: LiquidSearchControl(
+                    key: _searchKey,
+                    hintText: 'Search in document',
+                    semanticsLabel: 'Search in document',
+                    onChanged: _searchChanged,
+                    onSubmitted: (_) {
+                      if (_renderer.hitCount > 0) {
+                        _renderer.showNextHit();
+                      }
+                    },
+                    onExpansionChanged: (expanded) {
+                      if (!mounted || _searchExpanded == expanded) {
+                        return;
+                      }
+                      setState(() => _searchExpanded = expanded);
+                      _driveChrome();
+                    },
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: _menuOpen,
+                  child: ReaderChromeShell(
+                    progress: _chromeProgress,
+                    hiddenDy: ReaderChromeSpec.topHiddenDy,
+                    child: LiquidMorphingControl(
+                      key: _exitKey,
+                      collapsedHitKey: const ValueKey<String>(
+                        'reader_back_button',
+                      ),
+                      collapsedSemanticsLabel: widget.openedExternally
+                          ? ReaderExitMenu.closeLabel
+                          : 'Back to library',
+                      collapsedHitChild: hintsVisible && needsCloseHint
+                          ? const InfoNoticeTooltip(
+                              message:
+                                  'Press and hold Close.\nChoose '
+                                  '“${ReaderExitMenu.closeLabel}” or '
+                                  '“${ReaderExitMenu.returnLabel}”.',
+                              child: SizedBox.expand(),
+                            )
+                          : null,
+                      expandedSemanticsLabel: 'Navigation options',
+                      onCollapsedTap: _handleBackButton,
+                      geometryBuilder: (viewport) {
+                        final top = media.viewPadding.top + 10;
+                        return LiquidMorphGeometry(
+                          collapsedRect: Rect.fromLTWH(16, top, 48, 48),
+                          expandedRect: Rect.fromLTWH(16, top, 226, 112),
+                          expandedCornerRadius: 24,
+                        );
+                      },
+                      collapsedChild: Center(
+                        child: AdaptiveGlassIcon(
+                          widget.openedExternally
+                              ? LucideIcons.x
+                              : LucideIcons.chevronLeft,
+                          size: 24,
+                        ),
+                      ),
+                      expandedChild: ReaderExitMenu(
+                        openedExternally: widget.openedExternally,
+                        onReturnToMain: _returnToMain,
+                        onCloseApp: _closeApp,
+                      ),
+                      onExpansionChanged: (expanded) {
+                        if (!mounted || _exitOpen == expanded) {
+                          return;
+                        }
+                        if (expanded) {
+                          if (widget.openedExternally) {
+                            TutorialScope.complete(
+                              context,
+                              TutorialTour.externalClose,
+                            );
+                          }
+                          _menuKey.currentState?.close();
+                        }
+                        setState(() => _exitOpen = expanded);
+                        if (expanded) {
+                          _setChromeTarget(true);
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  ignoring: _exitOpen,
+                  child: ReaderChromeShell(
+                    progress: _chromeProgress,
+                    hiddenDy: ReaderChromeSpec.topHiddenDy,
+                    child: LiquidMorphingControl(
+                      key: _menuKey,
+                      collapsedHitKey: const ValueKey<String>(
+                        'reader_menu_button',
+                      ),
+                      collapsedSemanticsLabel: 'Document menu',
+                      expandedSemanticsLabel: 'Document menu',
+                      geometryBuilder: (viewport) {
+                        final top = media.viewPadding.top + 10;
+                        return LiquidMorphGeometry(
+                          collapsedRect: Rect.fromLTWH(
+                            viewport.width - 64,
+                            top,
+                            48,
+                            48,
+                          ),
+                          expandedRect: Rect.fromLTWH(
+                            viewport.width - 242,
+                            top,
+                            226,
+                            // Two 48px rows, a 1px divider and the shared
+                            // 8px vertical padding: 113, not 112. The menu
+                            // column overflowed by exactly the missing pixel.
+                            113,
+                          ),
+                          expandedCornerRadius: 24,
+                        );
+                      },
+                      collapsedChild: const Center(child: ReaderMenuGlyph()),
+                      expandedChild: ReaderMenuContent(
+                        onFileInfo: () => unawaited(_openFileInfo()),
+                        onRemove: () {
+                          _menuKey.currentState?.close();
+                          unawaited(widget.onRemoveFromRecents());
+                        },
+                      ),
+                      onExpansionChanged: (expanded) {
+                        if (!mounted || _menuOpen == expanded) {
+                          return;
+                        }
+                        if (expanded) {
+                          _exitKey.currentState?.close();
+                        }
+                        setState(() => _menuOpen = expanded);
+                        if (expanded) {
+                          _setChromeTarget(true);
+                        }
+                      },
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 20,
+                bottom:
+                    media.viewInsets.bottom + media.viewPadding.bottom + 102,
+                child: ReaderChromeShell(
+                  progress: _chromeProgress,
+                  hiddenDy: ReaderChromeSpec.pillHiddenDy,
+                  child: AnimatedBuilder(
+                    animation: _renderer,
+                    builder: (context, child) {
+                      final hasQuery = _renderer.query.trim().isNotEmpty;
+                      final gated =
+                          hasQuery && !_menuOpen && !_exitOpen && !_infoOpen;
+                      return TweenAnimationBuilder<double>(
+                        tween: Tween<double>(end: gated ? 1 : 0),
+                        duration: navigatorFadeDuration,
+                        curve: gated
+                            ? ReaderChromeSpec.showCurve
+                            : ReaderChromeSpec.hideCurve,
+                        builder: (context, opacity, child) =>
+                            LiquidFade(opacity: opacity, child: child!),
+                        child: IgnorePointer(
+                          ignoring: !gated,
+                          child: ExcludeSemantics(
+                            excluding: !gated,
+                            child: hasQuery
+                                ? ReaderSearchNavigator(renderer: _renderer)
+                                : const SizedBox.shrink(),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -825,13 +879,6 @@ class _TopChromeContent extends StatelessWidget {
 
   final DocumentEntry document;
 
-  static TextStyle _titleStyle(BuildContext context) =>
-      AppTextStyles.bodyStrong(context).copyWith(
-        fontSize: 14,
-        fontWeight: FontWeight.w500,
-        letterSpacing: -0.1,
-      );
-
   @override
   Widget build(BuildContext context) {
     return Row(
@@ -845,7 +892,7 @@ class _TopChromeContent extends StatelessWidget {
             builder: (context, constraints) {
               final direction = Directionality.of(context);
               final textScaler = MediaQuery.textScalerOf(context);
-              final style = _titleStyle(context);
+              final style = AppTextStyles.body(context);
               final maxTextWidth = (constraints.maxWidth - _titlePadding).clamp(
                 0.0,
                 double.infinity,
@@ -928,4 +975,3 @@ class _LiquidChromeObject extends StatelessWidget {
     return LiquidGlassControl(size: size, child: child);
   }
 }
-

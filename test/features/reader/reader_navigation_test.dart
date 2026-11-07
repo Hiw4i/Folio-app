@@ -114,32 +114,33 @@ void main() {
   });
 
   group('text navigation', () {
-    testWidgets('a detached viewport reports unknown position and never seeks', (
-      tester,
-    ) async {
-      final renderer = TextRendererStub()..loadState = ReaderLoadState.ready;
-      final controller = AutoScrollController();
-      final progress = ValueNotifier<int>(0);
-      final navigation = TextReaderNavigation(
-        renderer: renderer,
-        scrollController: controller,
-        progressPercent: progress,
-      );
-      addTearDown(navigation.dispose);
-      addTearDown(controller.dispose);
-      addTearDown(progress.dispose);
+    testWidgets(
+      'a detached viewport reports unknown position and never seeks',
+      (tester) async {
+        final renderer = TextRendererStub()..loadState = ReaderLoadState.ready;
+        final controller = AutoScrollController();
+        final progress = ValueNotifier<int>(0);
+        final navigation = TextReaderNavigation(
+          renderer: renderer,
+          scrollController: controller,
+          progressPercent: progress,
+        );
+        addTearDown(navigation.dispose);
+        addTearDown(controller.dispose);
+        addTearDown(progress.dispose);
 
-      final snapshot = navigation.snapshot;
-      expect(snapshot.confirmedFraction, isNull);
-      expect(snapshot.canSeek, isFalse);
-      expect(snapshot.showScrubber, isFalse);
-      expect(snapshot.kind, ReaderPositionKind.flow);
-      expect(snapshot.positionLabel, '0%');
+        final snapshot = navigation.snapshot;
+        expect(snapshot.confirmedFraction, isNull);
+        expect(snapshot.canSeek, isFalse);
+        expect(snapshot.showScrubber, isFalse);
+        expect(snapshot.kind, ReaderPositionKind.flow);
+        expect(snapshot.positionLabel, '0%');
 
-      await navigation.seekToFraction(0.5);
-      // No clients attached: the jump must not happen (and would assert).
-      expect(tester.takeException(), isNull);
-    });
+        await navigation.seekToFraction(0.5);
+        // No clients attached: the jump must not happen (and would assert).
+        expect(tester.takeException(), isNull);
+      },
+    );
 
     testWidgets('flow position follows the scroll position', (tester) async {
       final renderer = TextRendererStub()..loadState = ReaderLoadState.ready;
@@ -188,7 +189,9 @@ void main() {
       );
     });
 
-    testWidgets('a screenful document keeps the scrubber hidden', (tester) async {
+    testWidgets('a screenful document keeps the scrubber hidden', (
+      tester,
+    ) async {
       final renderer = TextRendererStub()..loadState = ReaderLoadState.ready;
       final controller = AutoScrollController();
       final navigation = TextReaderNavigation(
@@ -205,7 +208,9 @@ void main() {
           child: CustomScrollView(
             controller: controller,
             slivers: <Widget>[
-              SliverToBoxAdapter(child: SizedBox(height: 200, child: Text('short'))),
+              SliverToBoxAdapter(
+                child: SizedBox(height: 200, child: Text('short')),
+              ),
             ],
           ),
         ),
@@ -221,7 +226,10 @@ void main() {
         ..officeSourceReady = true
         ..currentPosition = 3
         ..positionCount = 8;
-      final navigation = OfficeReaderNavigation(renderer, supportsScrubbing: true);
+      final navigation = OfficeReaderNavigation(
+        renderer,
+        supportsScrubbing: true,
+      );
       addTearDown(navigation.dispose);
 
       final snapshot = navigation.snapshot;
@@ -240,7 +248,10 @@ void main() {
         ..officeSourceReady = true
         ..currentPosition = 2
         ..positionCount = 9;
-      final navigation = OfficeReaderNavigation(renderer, supportsScrubbing: false);
+      final navigation = OfficeReaderNavigation(
+        renderer,
+        supportsScrubbing: false,
+      );
       addTearDown(navigation.dispose);
 
       final snapshot = navigation.snapshot;
@@ -253,24 +264,33 @@ void main() {
       final renderer = OfficeRendererStub(document: stubEntry('doc.docx'))
         ..officeSourceReady = true
         ..positionCount = 2;
-      final navigation = OfficeReaderNavigation(renderer, supportsScrubbing: true);
+      final navigation = OfficeReaderNavigation(
+        renderer,
+        supportsScrubbing: true,
+      );
       addTearDown(navigation.dispose);
       expect(navigation.snapshot.showScrubber, isFalse);
     });
 
-    test('dispose detaches renderer listeners without closing the renderer', () async {
-      final renderer = OfficeRendererStub(document: stubEntry('doc.docx'))
-        ..officeSourceReady = true;
-      final navigation = OfficeReaderNavigation(renderer, supportsScrubbing: true);
-      var notifications = 0;
-      navigation.addListener(() => notifications++);
-      navigation.dispose();
-      navigation.dispose();
-      renderer.notifyListeners();
-      expect(notifications, 0);
-      // The renderer itself must stay alive and usable.
-      expect(renderer.positionCount, 0);
-      renderer.dispose();
-    });
+    test(
+      'dispose detaches renderer listeners without closing the renderer',
+      () async {
+        final renderer = OfficeRendererStub(document: stubEntry('doc.docx'))
+          ..officeSourceReady = true;
+        final navigation = OfficeReaderNavigation(
+          renderer,
+          supportsScrubbing: true,
+        );
+        var notifications = 0;
+        navigation.addListener(() => notifications++);
+        navigation.dispose();
+        navigation.dispose();
+        renderer.notifyListeners();
+        expect(notifications, 0);
+        // The renderer itself must stay alive and usable.
+        expect(renderer.positionCount, 0);
+        renderer.dispose();
+      },
+    );
   });
 }

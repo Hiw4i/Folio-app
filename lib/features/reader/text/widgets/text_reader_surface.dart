@@ -60,9 +60,7 @@ class _TextReaderSurfaceState extends State<TextReaderSurface> {
     }
     _lastActiveHit = hitIndex;
     final generation = ++_revealGeneration;
-    _activeHitKey = GlobalKey(
-      debugLabel: 'reader active search hit $hitIndex',
-    );
+    _activeHitKey = GlobalKey(debugLabel: 'reader active search hit $hitIndex');
     if (widget.renderer.activeHit != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         unawaited(_revealActiveHit(generation));

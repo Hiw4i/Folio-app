@@ -101,10 +101,7 @@ class HighlightSyntax extends markdown.InlineSyntax {
   @override
   bool onMatch(markdown.InlineParser parser, Match match) {
     parser.addNode(
-      markdown.Element(
-        'mark',
-        parser.document.parseInline(match.group(1)!),
-      ),
+      markdown.Element('mark', parser.document.parseInline(match.group(1)!)),
     );
     return true;
   }

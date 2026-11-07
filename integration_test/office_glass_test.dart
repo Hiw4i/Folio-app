@@ -331,17 +331,17 @@ void main() {
         Future<void> handle(bool active) async {
           final done = Completer<void>();
           tester.binding.channelBuffers.push(
-                channel.name,
-                const StandardMethodCodec().encodeMethodCall(
-                  MethodCall('event', {
-                    'type': 'selectionHandle',
-                    'active': active,
-                    'x': .85,
-                    'y': (controlsTop + 80) / size.height,
-                  }),
-                ),
-                (_) => done.complete(),
-              );
+            channel.name,
+            const StandardMethodCodec().encodeMethodCall(
+              MethodCall('event', {
+                'type': 'selectionHandle',
+                'active': active,
+                'x': .85,
+                'y': (controlsTop + 80) / size.height,
+              }),
+            ),
+            (_) => done.complete(),
+          );
           await done.future;
           await tester.pump();
         }

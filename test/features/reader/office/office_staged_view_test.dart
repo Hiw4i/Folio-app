@@ -70,17 +70,16 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a renderer swapped mid-reveal resets the overlay', (tester) async {
+  testWidgets('a renderer swapped mid-reveal resets the overlay', (
+    tester,
+  ) async {
     final first = OfficeRendererStub(document: stubEntry('doc.docx'));
     await first.open();
     addTearDown(first.dispose);
     await tester.pumpWidget(
       Directionality(
         textDirection: TextDirection.ltr,
-        child: OfficeStagedView(
-          renderer: first,
-          view: const SizedBox.expand(),
-        ),
+        child: OfficeStagedView(renderer: first, view: const SizedBox.expand()),
       ),
     );
     // The ready event both flips the load state and cancels the open

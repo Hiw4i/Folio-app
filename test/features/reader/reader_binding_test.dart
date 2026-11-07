@@ -37,10 +37,7 @@ void main() {
       );
       // The pdf branch wraps the viewer in the stable fade wrapper.
       expect(surface, isA<ReaderContentFadeIn>());
-      expect(
-        (surface as ReaderContentFadeIn).child,
-        isA<PdfDocumentView>(),
-      );
+      expect((surface as ReaderContentFadeIn).child, isA<PdfDocumentView>());
     });
   });
 
@@ -98,7 +95,9 @@ void main() {
       binding.dispose();
     });
 
-    testWidgets('PPTX never scrubs and never scrolls the chrome', (tester) async {
+    testWidgets('PPTX never scrubs and never scrolls the chrome', (
+      tester,
+    ) async {
       final renderer = PowerPointRendererStub(document: stubEntry('deck.pptx'));
       addTearDown(renderer.dispose);
       await renderer.open();
@@ -140,7 +139,9 @@ void main() {
       // The ready handshake also cancels the ready watchdog, which fake-async
       // testWidgets would otherwise report as a pending timer.
       renderer.handleViewEvent(<Object?, Object?>{
-        'type': 'ready', 'count': 3, 'hasText': true,
+        'type': 'ready',
+        'count': 3,
+        'hasText': true,
       });
       final binding = OfficeReaderBinding(renderer, supportsScrubbing: false);
 
@@ -148,7 +149,8 @@ void main() {
       expect(binding.closeSurfaceOverlay(), isFalse);
 
       renderer.handleViewEvent(<Object?, Object?>{
-        'type': 'overview', 'open': true,
+        'type': 'overview',
+        'open': true,
       });
       expect(binding.hasSurfaceOverlay, isTrue);
       // Closing delegates to the renderer; the flag itself stays with the

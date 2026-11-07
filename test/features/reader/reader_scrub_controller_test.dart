@@ -64,21 +64,22 @@ void main() {
     expect(controller.previewFraction, 0.3);
   });
 
-  testWidgets('drag updates dispatch at most once per frame with the latest value', (
-    tester,
-  ) async {
-    controller.begin(0.1);
-    controller.update(0.2);
-    controller.update(0.3);
-    controller.update(0.4);
-    // Only the immediate begin seek has run; the frame-coalesced flush has
-    // not, and no intermediate value may leak through.
-    expect(navigation.seeks, <double>[0.1]);
-    await tester.pump();
-    expect(navigation.seeks, <double>[0.1, 0.4]);
-    await tester.pump();
-    expect(navigation.seeks, <double>[0.1, 0.4]);
-  });
+  testWidgets(
+    'drag updates dispatch at most once per frame with the latest value',
+    (tester) async {
+      controller.begin(0.1);
+      controller.update(0.2);
+      controller.update(0.3);
+      controller.update(0.4);
+      // Only the immediate begin seek has run; the frame-coalesced flush has
+      // not, and no intermediate value may leak through.
+      expect(navigation.seeks, <double>[0.1]);
+      await tester.pump();
+      expect(navigation.seeks, <double>[0.1, 0.4]);
+      await tester.pump();
+      expect(navigation.seeks, <double>[0.1, 0.4]);
+    },
+  );
 
   testWidgets('the heavy policy respects the 80 ms spacing', (tester) async {
     navigation.minimumSeekInterval = const Duration(milliseconds: 80);
@@ -165,7 +166,10 @@ void main() {
 
     // A disposed controller must not keep frame callbacks alive either: the
     // immediate begin seek (0.2) runs, the pending update (0.3) never does.
-    final disposedController = ReaderScrubController(navigation, now: () => fakeNow);
+    final disposedController = ReaderScrubController(
+      navigation,
+      now: () => fakeNow,
+    );
     disposedController.begin(0.2);
     disposedController.update(0.3);
     disposedController.dispose();

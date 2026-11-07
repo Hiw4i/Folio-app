@@ -40,4 +40,14 @@ class FolioSettingsScope extends InheritedNotifier<FolioSettingsController> {
 
   static bool liquidMotionEnabledOf(BuildContext context) =>
       settingsOf(context).liquidMotionEnabled;
+
+  /// The resolved appearance: [FolioThemeMode.system] reads the OS brightness
+  /// through MediaQuery, so callers rebuild when it changes.
+  static bool isLightThemeOf(BuildContext context) =>
+      switch (settingsOf(context).themeMode) {
+        FolioThemeMode.light => true,
+        FolioThemeMode.dark => false,
+        FolioThemeMode.system =>
+          MediaQuery.platformBrightnessOf(context) == Brightness.light,
+      };
 }

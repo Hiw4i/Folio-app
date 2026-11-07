@@ -1,6 +1,9 @@
 import 'package:animations/animations.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import 'support/memory_tutorial_store.dart';
+
 import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/library/data/document_entry.dart';
@@ -11,7 +14,10 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      FolioApp(libraryRepository: InMemoryLibraryRepository.demo()),
+      FolioApp(
+        tutorialStore: MemoryTutorialStore.allSeen(),
+        libraryRepository: InMemoryLibraryRepository.demo(),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -56,6 +62,7 @@ void main() {
     );
     await tester.pumpWidget(
       FolioApp(
+        tutorialStore: MemoryTutorialStore.allSeen(),
         libraryRepository: InMemoryLibraryRepository(
           documents: <DocumentEntry>[missing],
         ),
@@ -76,7 +83,10 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      FolioApp(libraryRepository: InMemoryLibraryRepository.demo()),
+      FolioApp(
+        tutorialStore: MemoryTutorialStore.allSeen(),
+        libraryRepository: InMemoryLibraryRepository.demo(),
+      ),
     );
     await tester.pumpAndSettle();
 
@@ -98,7 +108,10 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      FolioApp(libraryRepository: InMemoryLibraryRepository.demo()),
+      FolioApp(
+        tutorialStore: MemoryTutorialStore.allSeen(),
+        libraryRepository: InMemoryLibraryRepository.demo(),
+      ),
     );
     await tester.pumpAndSettle();
     final filter = find.byKey(const ValueKey<String>('format_filters'));

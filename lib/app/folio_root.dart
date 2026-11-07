@@ -195,7 +195,7 @@ class _FolioRootState extends State<FolioRoot>
     final external = _externalDocument;
     final libraryActive = external == null;
     return ColoredBox(
-      color: appColors.background,
+      color: context.colors.background,
       child: Stack(
         fit: StackFit.expand,
         children: <Widget>[
@@ -231,6 +231,8 @@ class _FolioRootState extends State<FolioRoot>
                     document: external,
                     contentSource: widget.documentContentSource,
                     openedExternally: true,
+                    tutorialHintsEnabled:
+                        !_transition.isAnimating && !_closingExternal,
                     initialRenderer: _externalRenderer,
                     onReturnToMain: _returnToMain,
                     onRemoveFromRecents: () =>

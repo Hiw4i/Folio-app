@@ -111,27 +111,27 @@ void main() {
       );
     });
 
-    test('a query before the source is prepared waits instead of completing', () {
-      final renderer = PdfRendererStub()
-        ..query = 'word'
-        ..isSearching = true;
-      expect(
-        renderer.searchState.phase,
-        ReaderSearchPhase.waitingForSource,
-      );
-    });
+    test(
+      'a query before the source is prepared waits instead of completing',
+      () {
+        final renderer = PdfRendererStub()
+          ..query = 'word'
+          ..isSearching = true;
+        expect(renderer.searchState.phase, ReaderSearchPhase.waitingForSource);
+      },
+    );
 
-    test('a prepared source without an attached searcher is not "no matches"', () {
-      // Real window: the document ref exists but the viewer has not attached
-      // yet, so no search can have run — zero hits must read as waiting.
-      final renderer = PdfRendererStub()
-        ..pdfSourceReady = true
-        ..query = 'word';
-      expect(
-        renderer.searchState.phase,
-        ReaderSearchPhase.waitingForSource,
-      );
-    });
+    test(
+      'a prepared source without an attached searcher is not "no matches"',
+      () {
+        // Real window: the document ref exists but the viewer has not attached
+        // yet, so no search can have run — zero hits must read as waiting.
+        final renderer = PdfRendererStub()
+          ..pdfSourceReady = true
+          ..query = 'word';
+        expect(renderer.searchState.phase, ReaderSearchPhase.waitingForSource);
+      },
+    );
 
     // Stub note: the stub's _textSearcher is always null (it is private and
     // set by attachViewer), so "searcher attached + finished + 0 hits →
@@ -142,10 +142,7 @@ void main() {
         ..pdfSourceReady = true
         ..query = 'word'
         ..isSearching = true;
-      expect(
-        renderer.searchState.phase,
-        ReaderSearchPhase.searching,
-      );
+      expect(renderer.searchState.phase, ReaderSearchPhase.searching);
       renderer.isSearching = false;
       renderer.stubHits = 2;
       final snapshot = renderer.searchState;
@@ -168,19 +165,13 @@ void main() {
         renderer.searchState.textAvailability,
         ReaderTextAvailability.unknown,
       );
-      expect(
-        renderer.searchState.phase,
-        ReaderSearchPhase.waitingForSource,
-      );
+      expect(renderer.searchState.phase, ReaderSearchPhase.waitingForSource);
       renderer.loadState = ReaderLoadState.ready;
       expect(
         renderer.searchState.textAvailability,
         ReaderTextAvailability.present,
       );
-      expect(
-        renderer.searchState.phase,
-        ReaderSearchPhase.complete,
-      );
+      expect(renderer.searchState.phase, ReaderSearchPhase.complete);
     });
 
     test('an unsupported encoding is not an absent text layer', () {
@@ -245,24 +236,29 @@ void main() {
       renderer.dispose();
     });
 
-    test('a failing search command surfaces an error, not zero results', () async {
-      final renderer = OfficeRendererStub(document: stubEntry('doc.docx'));
-      renderer.officeSourceReady = true;
-      await renderer.open();
-      final view = RecordingOfficeView(searchError: StateError('channel died'));
-      renderer.attachView(view, renderer.session!.id);
-      renderer.handleViewEvent(<Object?, Object?>{
-        'type': 'ready',
-        'count': 6,
-        'hasText': true,
-      });
-      await renderer.search('word');
-      final snapshot = renderer.searchState;
-      expect(snapshot.phase, ReaderSearchPhase.failed);
-      expect(snapshot.failure, isNotNull);
-      expect(snapshot.hitCount, 0);
-      renderer.dispose();
-    });
+    test(
+      'a failing search command surfaces an error, not zero results',
+      () async {
+        final renderer = OfficeRendererStub(document: stubEntry('doc.docx'));
+        renderer.officeSourceReady = true;
+        await renderer.open();
+        final view = RecordingOfficeView(
+          searchError: StateError('channel died'),
+        );
+        renderer.attachView(view, renderer.session!.id);
+        renderer.handleViewEvent(<Object?, Object?>{
+          'type': 'ready',
+          'count': 6,
+          'hasText': true,
+        });
+        await renderer.search('word');
+        final snapshot = renderer.searchState;
+        expect(snapshot.phase, ReaderSearchPhase.failed);
+        expect(snapshot.failure, isNotNull);
+        expect(snapshot.hitCount, 0);
+        renderer.dispose();
+      },
+    );
   });
 
   group('unsupported renderer search state', () {

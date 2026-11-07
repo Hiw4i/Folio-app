@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 
 import '../../settings/folio_settings_scope.dart';
+import '../../theme/folio_theme.dart';
 import 'adaptive_glass_effects.dart';
 
 export 'adaptive_glass_effects.dart';
@@ -110,7 +111,9 @@ class AdaptiveGlassIcon extends StatelessWidget {
           icon,
           size: size,
           semanticLabel: semanticLabel,
-          color: const Color(0xFFFFFFFF),
+          // Fixed (blur-off) foreground follows the content color: white on
+          // the dark glass, dark on the light one.
+          color: context.colors.primary,
         ),
       );
     }
@@ -946,7 +949,7 @@ class _OutlinedIcon extends StatelessWidget {
     return Icon(
       icon,
       size: size,
-      color: const Color(0xFFFFFFFF),
+      color: context.colors.primary,
       semanticLabel: semanticLabel,
       shadows: kAdaptiveOutlineShadows,
     );
@@ -988,7 +991,7 @@ class _OutlinedText extends StatelessWidget {
       textDirection: textDirection,
       textScaler: textScaler,
       style: style.copyWith(
-        color: const Color(0xFFFFFFFF),
+        color: context.colors.primary,
         shadows: FolioSettingsScope.blurEnabledOf(context)
             ? kAdaptiveOutlineShadows
             : const <Shadow>[],

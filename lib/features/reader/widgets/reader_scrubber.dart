@@ -26,7 +26,11 @@ import '../logic/reader_scrub_controller.dart';
 ///
 /// Short files (up to ~2 pages/screens) show nothing at all.
 class ReaderScrubber extends StatefulWidget {
-  const ReaderScrubber({required this.navigation, this.onScrubStateChanged, super.key});
+  const ReaderScrubber({
+    required this.navigation,
+    this.onScrubStateChanged,
+    super.key,
+  });
 
   final ReaderNavigation navigation;
 
@@ -104,8 +108,8 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
         ..dispose();
     }
     _listenedNavigation = navigation;
-    _controller =
-        ReaderScrubController(navigation)..addListener(_handleScrubStateChanged);
+    _controller = ReaderScrubController(navigation)
+      ..addListener(_handleScrubStateChanged);
     navigation.addListener(_handleExternalProgress);
     // A navigation swap mid-gesture rebuilds the idle controller; the shell
     // must not stay pinned hidden.
@@ -239,9 +243,13 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
             final knobY = _edgeInset + clamped * travel;
             // The pill rides the knob's center 1:1 so knob and readout never
             // drift apart; clamping only keeps it inside the strip.
-            final pillY = (_edgeInset + clamped * travel + _knobHeight / 2 - _pillHeight / 2)
-                .clamp(0.0, math.max(0.0, height - _pillHeight))
-                .toDouble();
+            final pillY =
+                (_edgeInset +
+                        clamped * travel +
+                        _knobHeight / 2 -
+                        _pillHeight / 2)
+                    .clamp(0.0, math.max(0.0, height - _pillHeight))
+                    .toDouble();
             final gripHeight = _knobHeight + _grabHalo * 2;
             final gripTop = (knobY - _grabHalo)
                 .clamp(0.0, math.max(0.0, height - gripHeight))
@@ -311,12 +319,10 @@ class _ReaderScrubberState extends State<ReaderScrubber> {
         value: label,
         increasedValue: widget.navigation.labelForFraction(basis + 0.05),
         decreasedValue: widget.navigation.labelForFraction(basis - 0.05),
-        onIncrease: () => unawaited(
-          widget.navigation.seekToFraction(basis + 0.05),
-        ),
-        onDecrease: () => unawaited(
-          widget.navigation.seekToFraction(basis - 0.05),
-        ),
+        onIncrease: () =>
+            unawaited(widget.navigation.seekToFraction(basis + 0.05)),
+        onDecrease: () =>
+            unawaited(widget.navigation.seekToFraction(basis - 0.05)),
         child: GestureDetector(
           key: const ValueKey<String>('reader_scrub_grip'),
           behavior: HitTestBehavior.translucent,
@@ -351,12 +357,12 @@ class _ScrubPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return LiquidGlassControl(
-      size: const Size(_ReaderScrubberSizes.pillWidth, _ReaderScrubberSizes.pillHeight),
+      size: const Size(
+        _ReaderScrubberSizes.pillWidth,
+        _ReaderScrubberSizes.pillHeight,
+      ),
       child: Center(
-        child: AdaptiveGlassText(
-          label,
-          style: AppTextStyles.smallDim(context),
-        ),
+        child: AdaptiveGlassText(label, style: AppTextStyles.metadata(context)),
       ),
     );
   }

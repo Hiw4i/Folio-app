@@ -294,7 +294,6 @@ class LibraryController extends ChangeNotifier {
     _notify();
   }
 
-
   /// Queues [document] as the pending in-app launch. Production open flow
   /// goes through the library screen's OpenContainer; this is the
   /// controller-level path the regression tests pin.
@@ -307,6 +306,7 @@ class LibraryController extends ChangeNotifier {
     _pendingDocumentIsExternal = false;
     _notify();
   }
+
   /// Recording history must never prevent opening the actual document.
   Future<DocumentEntry?> markOpened(DocumentEntry document) async {
     if (_disposed) {

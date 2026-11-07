@@ -15,6 +15,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 
+import '../../../../shared/theme/folio_theme.dart';
+
 import '../../../../shared/selection/folio_selection_toolbar.dart';
 import '../../../../shared/selection/selection_magnifier.dart';
 import '../../../../shared/selection/selection_visuals.dart';
@@ -822,6 +824,7 @@ class _TextDocumentSelectionState extends State<TextDocumentSelection>
                     child: CustomPaint(
                       foregroundPainter: FolioSelectionHighlightPainter(
                         _visibleHighlightRects,
+                        selectionColor: context.colors.selection,
                         repaint: _visualRepaint,
                       ),
                     ),

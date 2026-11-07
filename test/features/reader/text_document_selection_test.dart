@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:folio/shared/theme/app_colors.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:folio/features/reader/text/data/text_document.dart';
 import 'package:folio/features/reader/text/logic/markdown_selection_text.dart';
@@ -36,8 +37,8 @@ void main() {
       MaterialApp(
         theme: ThemeData(
           textSelectionTheme: TextSelectionThemeData(
-            selectionColor: appColors.selection,
-            selectionHandleColor: appColors.selectionHandle,
+            selectionColor: darkAppColors.selection,
+            selectionHandleColor: darkAppColors.selectionHandle,
           ),
         ),
         home: Scaffold(

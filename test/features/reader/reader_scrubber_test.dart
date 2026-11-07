@@ -3,13 +3,17 @@ import 'dart:typed_data';
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/memory_tutorial_store.dart';
+
 import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
 
 void main() {
-  final longBody = 'Quiet text.\n\n'
+  final longBody =
+      'Quiet text.\n\n'
       '${List<String>.filled(120, 'A calm line for scrolling.\n\n').join()}';
 
   DocumentEntry entry(String name, String path) => DocumentEntry(
@@ -29,6 +33,7 @@ void main() {
     final path = '/documents/$name';
     await tester.pumpWidget(
       FolioApp(
+        tutorialStore: MemoryTutorialStore.allSeen(),
         libraryRepository: InMemoryLibraryRepository(
           documents: <DocumentEntry>[entry(name, path)],
         ),
@@ -121,9 +126,7 @@ void main() {
     // glass overflow hit zone): with absolute mapping the knob would
     // teleport its center under the finger here.
     final gripCenter = tester.getCenter(grip);
-    final gesture = await tester.startGesture(
-      gripCenter + const Offset(0, 20),
-    );
+    final gesture = await tester.startGesture(gripCenter + const Offset(0, 20));
     await gesture.moveBy(const Offset(0, 25));
     await tester.pump();
     // No snap-to-finger teleport on grab: the knob barely moved (only the
@@ -191,10 +194,7 @@ void main() {
     // The knob kept tracking (no pointer drop mid-gesture) and the pill
     // stayed up the whole time.
     final endCenter = tester.getCenter(grip);
-    expect(
-      (endCenter.dy - startCenter.dy - fingerDy).abs(),
-      lessThan(24),
-    );
+    expect((endCenter.dy - startCenter.dy - fingerDy).abs(), lessThan(24));
     expect(
       find.byKey(const ValueKey<String>('reader_scrub_pill')),
       findsOneWidget,
@@ -217,7 +217,9 @@ void main() {
     await tester.pumpAndSettle();
 
     final knob = tester.getCenter(grip);
-    final pill = tester.getCenter(find.byKey(const ValueKey<String>('reader_scrub_pill')));
+    final pill = tester.getCenter(
+      find.byKey(const ValueKey<String>('reader_scrub_pill')),
+    );
     // The material boxes share one travel now; the glass shell paints a few
     // px of optical overflow, so allow that and nothing more.
     expect(
@@ -256,9 +258,11 @@ void main() {
     await openReader(tester, body: longBody);
     final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
     double knobOpacity() {
-      final opacity = tester.widgetList<Opacity>(
-        find.descendant(of: grip, matching: find.byType(Opacity)),
-      ).first;
+      final opacity = tester
+          .widgetList<Opacity>(
+            find.descendant(of: grip, matching: find.byType(Opacity)),
+          )
+          .first;
       return opacity.opacity;
     }
 
@@ -280,9 +284,11 @@ void main() {
     await openReader(tester, body: longBody);
     final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
     double knobOpacity() {
-      final opacity = tester.widgetList<Opacity>(
-        find.descendant(of: grip, matching: find.byType(Opacity)),
-      ).first;
+      final opacity = tester
+          .widgetList<Opacity>(
+            find.descendant(of: grip, matching: find.byType(Opacity)),
+          )
+          .first;
       return opacity.opacity;
     }
 

@@ -141,15 +141,9 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
       // A disposed viewer or a layout without dimensions: page fallback below.
     }
     if (pageCount > 1) {
-      final page = (1 + (target * (pageCount - 1)).round()).clamp(
-        1,
-        pageCount,
-      );
+      final page = (1 + (target * (pageCount - 1)).round()).clamp(1, pageCount);
       try {
-        await controller.goToPage(
-          pageNumber: page,
-          duration: Duration.zero,
-        );
+        await controller.goToPage(pageNumber: page, duration: Duration.zero);
       } catch (_) {
         // A disposed viewer can cancel the jump; the scrub thumb stays.
       }
@@ -199,7 +193,8 @@ class PdfDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     // mounted) — and zero hits without a searcher is never "no matches".
     phase: query.trim().isEmpty
         ? ReaderSearchPhase.idle
-        : !sourceReady || (_textSearcher == null && hitCount == 0 && !isSearching)
+        : !sourceReady ||
+              (_textSearcher == null && hitCount == 0 && !isSearching)
         ? ReaderSearchPhase.waitingForSource
         : isSearching
         ? ReaderSearchPhase.searching

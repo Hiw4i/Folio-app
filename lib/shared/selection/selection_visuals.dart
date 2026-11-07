@@ -1,8 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter/material.dart' show Magnifier;
 
-import '../theme/folio_theme.dart';
-
 /// Rounded silhouette for Flutter's full-height text line boxes.
 const double folioSelectionCornerRadius = 6;
 
@@ -171,7 +169,14 @@ void _addRoundedOutline(Path path, List<Offset> points, double radius) {
 }
 
 class FolioSelectionHighlightPainter extends CustomPainter {
-  FolioSelectionHighlightPainter(this.visibleRects, {super.repaint});
+  FolioSelectionHighlightPainter(
+    this.visibleRects, {
+    required this.selectionColor,
+    super.repaint,
+  });
+
+  /// Resolved from the current theme where the painter is created.
+  final Color selectionColor;
 
   final List<Rect> Function() visibleRects;
 
@@ -181,10 +186,7 @@ class FolioSelectionHighlightPainter extends CustomPainter {
     if (rects.isEmpty) return;
     canvas.save();
     canvas.clipRect(Offset.zero & size);
-    canvas.drawPath(
-      folioSelectionPath(rects),
-      Paint()..color = appColors.selection,
-    );
+    canvas.drawPath(folioSelectionPath(rects), Paint()..color = selectionColor);
     canvas.restore();
   }
 

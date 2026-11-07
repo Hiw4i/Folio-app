@@ -40,7 +40,8 @@ final class TextReaderNavigation extends ReadingNavigationSource
   /// Short files (up to ~2 screens) and detached viewports get no scrubber;
   /// without clients no seek command can execute either.
   bool get _isScrollable {
-    if (renderer.loadState != ReaderLoadState.ready || !scrollController.hasClients) {
+    if (renderer.loadState != ReaderLoadState.ready ||
+        !scrollController.hasClients) {
       return false;
     }
     final position = scrollController.position;

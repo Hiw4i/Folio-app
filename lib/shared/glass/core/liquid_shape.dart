@@ -45,12 +45,10 @@ abstract final class LiquidShape {
     return Rect.fromCenter(
       center: rect.center,
       width:
-          rect.width *
-              (1 + travelCommon + safeTravel * tokens.travelStretch) +
+          rect.width * (1 + travelCommon + safeTravel * tokens.travelStretch) +
           pressGrowthW +
           pressPad * 2,
-      height:
-          rect.height * (1 + travelCommon) + pressGrowthH + pressPad * 2,
+      height: rect.height * (1 + travelCommon) + pressGrowthH + pressPad * 2,
     );
   }
 

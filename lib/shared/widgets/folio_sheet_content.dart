@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
-import '../glass/surface/glass_panel.dart';
+import '../settings/folio_settings_scope.dart';
 import '../theme/folio_theme.dart';
 import 'folio_bottom_sheet.dart';
 
@@ -22,13 +22,22 @@ class FolioSheetContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brightness = FolioSettingsScope.isLightThemeOf(context)
+        ? Brightness.light
+        : Brightness.dark;
     return Theme(
-      data: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: appColors.background,
-        colorScheme: ColorScheme.dark(
-          primary: appColors.textPrimary,
-          surface: appColors.background,
-        ),
+      data: ThemeData(
+        brightness: brightness,
+        scaffoldBackgroundColor: context.colors.background,
+        colorScheme: brightness == Brightness.light
+            ? ColorScheme.light(
+                primary: context.colors.primary,
+                surface: context.colors.background,
+              )
+            : ColorScheme.dark(
+                primary: context.colors.primary,
+                surface: context.colors.background,
+              ),
       ),
       child: Material(
         type: MaterialType.transparency,
@@ -36,10 +45,18 @@ class FolioSheetContent extends StatelessWidget {
           constraints: BoxConstraints(
             maxHeight: MediaQuery.sizeOf(context).height * 0.85,
           ),
-          child: GlassPanel(
-            liquidMotion: false,
-            borderRadius: FolioBottomSheet.cornerRadius,
-            fill: const Color(0xE61A1B1E),
+          // god_mode's sheet surface: a plain solid container. No backdrop
+          // filter, rim shader or glass machinery — nothing that could ever
+          // let the backdrop bleed through the sheet.
+          child: DecoratedBox(
+            key: const ValueKey<String>('folio_sheet_surface'),
+            decoration: BoxDecoration(
+              color: context.glass.opaqueFill,
+              borderRadius: BorderRadius.circular(
+                FolioBottomSheet.cornerRadius,
+              ),
+              border: Border.all(color: context.colors.border, width: 0.8),
+            ),
             child: SingleChildScrollView(
               padding: AppSpacing.sheetPadding,
               child: Column(
@@ -52,7 +69,7 @@ class FolioSheetContent extends StatelessWidget {
                       height: 4,
                       margin: EdgeInsets.only(bottom: AppSpacing.xl),
                       decoration: BoxDecoration(
-                        color: const Color(0x55FFFFFF),
+                        color: context.colors.primary.withValues(alpha: 0.33),
                         borderRadius: AppRadius.xsRadius,
                       ),
                     ),
@@ -69,7 +86,7 @@ class FolioSheetContent extends StatelessWidget {
                           fontFamily: 'Inter',
                           fontSize: 24,
                           fontWeight: FontWeight.w600,
-                          color: appColors.textPrimary,
+                          color: context.colors.primary,
                           decoration: TextDecoration.none,
                         ),
                       ),
@@ -110,9 +127,9 @@ class FolioSheetSectionHeader extends StatelessWidget {
             width: 30,
             height: 30,
             decoration: BoxDecoration(
-              color: const Color(0x14FFFFFF),
+              color: context.colors.primary.withValues(alpha: 0.08),
               borderRadius: AppRadius.mdRadius,
-              border: Border.all(color: appColors.separator, width: 0.8),
+              border: Border.all(color: context.colors.border, width: 0.8),
             ),
             child: iconPath != null
                 ? SvgPicture.asset(
@@ -120,11 +137,11 @@ class FolioSheetSectionHeader extends StatelessWidget {
                     width: 15,
                     height: 15,
                     colorFilter: ColorFilter.mode(
-                      appColors.textPrimary,
+                      context.colors.primary,
                       BlendMode.srcIn,
                     ),
                   )
-                : Icon(icon, size: 15, color: appColors.textPrimary),
+                : Icon(icon, size: 15, color: context.colors.primary),
           ),
           SizedBox(width: AppSpacing.md),
           Expanded(
@@ -134,7 +151,7 @@ class FolioSheetSectionHeader extends StatelessWidget {
                 fontFamily: 'Inter',
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
-                color: appColors.textPrimary,
+                color: context.colors.primary,
               ),
             ),
           ),
@@ -154,9 +171,9 @@ class FolioSheetCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: const Color(0x0DFFFFFF),
-        borderRadius: AppRadius.cardRadius,
-        border: Border.all(color: appColors.separator, width: 0.8),
+        color: context.colors.primary.withValues(alpha: 0.05),
+        borderRadius: AppRadius.sheetRadius,
+        border: Border.all(color: context.colors.border, width: 0.8),
       ),
       child: Padding(
         padding: EdgeInsets.symmetric(
@@ -180,7 +197,7 @@ class FolioSheetDivider extends StatelessWidget {
     return SizedBox(
       height: 0.8,
       width: double.infinity,
-      child: ColoredBox(color: appColors.separator),
+      child: ColoredBox(color: context.colors.border),
     );
   }
 }

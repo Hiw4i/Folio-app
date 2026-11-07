@@ -90,3 +90,17 @@ class GlassTokens {
   /// (iOS-style: cheaper blur masked by motion, full blur restored at rest).
   final double minMotionBlurSigma;
 }
+
+/// The one soft-black shadow every liquid surface casts.
+///
+/// Shell (interactive, deformed) and case (static panels) paint through
+/// different APIs, so they keep their own blur radius and offset — the
+/// material color and strength live here so they can never drift apart.
+abstract final class LiquidShadows {
+  /// Near-black with a faint teal cast, not pure #000: the ambient library
+  /// background is tinted, and pure black reads dead next to it.
+  static const Color color = Color(0xFF020809);
+
+  /// Shadow strength at rest; callers scale it while fading surfaces.
+  static const double opacity = 0.30;
+}

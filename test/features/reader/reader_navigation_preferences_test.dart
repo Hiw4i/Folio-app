@@ -43,9 +43,9 @@ void main() {
       tester,
     ) async {
       await _pumpReader(tester, format);
-      tester.state<LiquidSearchControlState>(
-        find.byType(LiquidSearchControl),
-      ).open();
+      tester
+          .state<LiquidSearchControlState>(find.byType(LiquidSearchControl))
+          .open();
       await tester.pumpAndSettle();
       await _tapContent(tester, format);
       await tester.pumpAndSettle();
@@ -53,47 +53,52 @@ void main() {
     });
 
     if (format == DocumentFormat.pptx) continue;
-    testWidgets('${format.name}: scroll-driven navigation obeys live settings', (
-      tester,
-    ) async {
-      final settings = await _pumpReader(tester, format, showOnScrollUp: false);
-      await _tapContent(tester, format);
-      await tester.pumpAndSettle();
-      _readingScroll(tester, format, -100);
-      await tester.pumpAndSettle();
-      _expectChrome(tester, false); // Disabled: scroll up does not reveal.
-      await _tapContent(tester, format);
-      await tester.pumpAndSettle();
-      _expectChrome(tester, true); // Manual reveal always remains available.
-      _readingScroll(tester, format, 100);
-      await tester.pumpAndSettle();
-      _expectChrome(tester, true); // Disabled: scroll down does not hide.
+    testWidgets(
+      '${format.name}: scroll-driven navigation obeys live settings',
+      (tester) async {
+        final settings = await _pumpReader(
+          tester,
+          format,
+          showOnScrollUp: false,
+        );
+        await _tapContent(tester, format);
+        await tester.pumpAndSettle();
+        _readingScroll(tester, format, -100);
+        await tester.pumpAndSettle();
+        _expectChrome(tester, false); // Disabled: scroll up does not reveal.
+        await _tapContent(tester, format);
+        await tester.pumpAndSettle();
+        _expectChrome(tester, true); // Manual reveal always remains available.
+        _readingScroll(tester, format, 100);
+        await tester.pumpAndSettle();
+        _expectChrome(tester, true); // Disabled: scroll down does not hide.
 
-      settings.setShowNavigationOnScrollUp(true);
-      await tester.pumpAndSettle();
-      _expectChrome(tester, true); // Changing the setting is not a hide.
-      _readingScroll(tester, format, 100);
-      await tester.pumpAndSettle();
-      _expectChrome(tester, false); // Enabled: downward auto-hide works.
-      _readingScroll(tester, format, -100);
-      await tester.pumpAndSettle();
-      _expectChrome(tester, true); // Enabled: upward reveal works.
+        settings.setShowNavigationOnScrollUp(true);
+        await tester.pumpAndSettle();
+        _expectChrome(tester, true); // Changing the setting is not a hide.
+        _readingScroll(tester, format, 100);
+        await tester.pumpAndSettle();
+        _expectChrome(tester, false); // Enabled: downward auto-hide works.
+        _readingScroll(tester, format, -100);
+        await tester.pumpAndSettle();
+        _expectChrome(tester, true); // Enabled: upward reveal works.
 
-      settings.setShowNavigationOnScrollUp(false);
-      await tester.pumpAndSettle();
-      _readingScroll(tester, format, 100);
-      await tester.pumpAndSettle();
-      _expectChrome(tester, true); // Disabled again: scroll is ignored.
-      await _tapContent(tester, format);
-      await tester.pumpAndSettle();
-      _expectChrome(tester, false); // Manual hide always remains available.
-      _readingScroll(tester, format, -100);
-      await tester.pumpAndSettle();
-      _expectChrome(tester, false); // Disabled: scroll up does not reveal.
-      await _tapContent(tester, format);
-      await tester.pumpAndSettle();
-      _expectChrome(tester, true); // Manual reveal always remains available.
-    });
+        settings.setShowNavigationOnScrollUp(false);
+        await tester.pumpAndSettle();
+        _readingScroll(tester, format, 100);
+        await tester.pumpAndSettle();
+        _expectChrome(tester, true); // Disabled again: scroll is ignored.
+        await _tapContent(tester, format);
+        await tester.pumpAndSettle();
+        _expectChrome(tester, false); // Manual hide always remains available.
+        _readingScroll(tester, format, -100);
+        await tester.pumpAndSettle();
+        _expectChrome(tester, false); // Disabled: scroll up does not reveal.
+        await _tapContent(tester, format);
+        await tester.pumpAndSettle();
+        _expectChrome(tester, true); // Manual reveal always remains available.
+      },
+    );
   }
 
   testWidgets('a second content tap reverses an in-flight hide animation', (
@@ -103,7 +108,9 @@ void main() {
     await _tapContent(tester, DocumentFormat.pdf);
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
-    final shell = tester.widget<ReaderChromeShell>(find.byType(ReaderChromeShell).first);
+    final shell = tester.widget<ReaderChromeShell>(
+      find.byType(ReaderChromeShell).first,
+    );
     expect(shell.progress.value, allOf(greaterThan(0), lessThan(1)));
     await _tapContent(tester, DocumentFormat.pdf);
     await tester.pumpAndSettle();
@@ -126,19 +133,20 @@ void main() {
     _expectChrome(tester, true);
   });
 
-  testWidgets('ballistic, horizontal and nested text scrolling cannot toggle panels', (
-    tester,
-  ) async {
-    await _pumpReader(tester, DocumentFormat.txt);
-    await _tapContent(tester, DocumentFormat.txt);
-    await tester.pumpAndSettle();
-    _dispatchTextScroll(tester, -100, dragged: false);
-    _dispatchTextScroll(tester, -100, direction: AxisDirection.right);
-    final context = _textContext(tester);
-    _NestedScrollNotification(context).dispatch(context);
-    await tester.pumpAndSettle();
-    _expectChrome(tester, false);
-  });
+  testWidgets(
+    'ballistic, horizontal and nested text scrolling cannot toggle panels',
+    (tester) async {
+      await _pumpReader(tester, DocumentFormat.txt);
+      await _tapContent(tester, DocumentFormat.txt);
+      await tester.pumpAndSettle();
+      _dispatchTextScroll(tester, -100, dragged: false);
+      _dispatchTextScroll(tester, -100, direction: AxisDirection.right);
+      final context = _textContext(tester);
+      _NestedScrollNotification(context).dispatch(context);
+      await tester.pumpAndSettle();
+      _expectChrome(tester, false);
+    },
+  );
 
   testWidgets('partial text scroll intents do not leak across separate drags', (
     tester,
@@ -148,7 +156,10 @@ void main() {
     await tester.pumpAndSettle();
     _dispatchTextScroll(tester, -8);
     final context = _textContext(tester);
-    ScrollEndNotification(metrics: _metrics(), context: context).dispatch(context);
+    ScrollEndNotification(
+      metrics: _metrics(),
+      context: context,
+    ).dispatch(context);
     _dispatchTextScroll(tester, -8);
     await tester.pumpAndSettle();
     _expectChrome(tester, false);
@@ -157,40 +168,45 @@ void main() {
     _expectChrome(tester, true);
   });
 
-  testWidgets('selection, long presses, cancelled and secondary taps keep panels stable', (
+  testWidgets(
+    'selection, long presses, cancelled and secondary taps keep panels stable',
+    (tester) async {
+      await _pumpReader(tester, DocumentFormat.txt);
+      final view = tester.widget<TextDocumentView>(
+        find.byType(TextDocumentView),
+      );
+      view.onSelectionChanged!(true);
+      await _tapContent(tester, DocumentFormat.txt);
+      _dispatchTextScroll(tester, 100);
+      await tester.pumpAndSettle();
+      _expectChrome(tester, true);
+      view.onSelectionChanged!(false);
+
+      final held = await tester.startGesture(const Offset(400, 420));
+      await tester.pump(const Duration(milliseconds: 550));
+      await held.up();
+      await tester.pumpAndSettle();
+      _expectChrome(tester, true);
+
+      final cancelled = await tester.startGesture(const Offset(400, 420));
+      await cancelled.cancel();
+      await tester.pumpAndSettle();
+      _expectChrome(tester, true);
+
+      final secondary = await tester.startGesture(
+        const Offset(400, 420),
+        kind: PointerDeviceKind.mouse,
+        buttons: kSecondaryButton,
+      );
+      await secondary.up();
+      await tester.pumpAndSettle();
+      _expectChrome(tester, true);
+    },
+  );
+
+  testWidgets('hidden panels survive rotation and effect changes', (
     tester,
   ) async {
-    await _pumpReader(tester, DocumentFormat.txt);
-    final view = tester.widget<TextDocumentView>(find.byType(TextDocumentView));
-    view.onSelectionChanged!(true);
-    await _tapContent(tester, DocumentFormat.txt);
-    _dispatchTextScroll(tester, 100);
-    await tester.pumpAndSettle();
-    _expectChrome(tester, true);
-    view.onSelectionChanged!(false);
-
-    final held = await tester.startGesture(const Offset(400, 420));
-    await tester.pump(const Duration(milliseconds: 550));
-    await held.up();
-    await tester.pumpAndSettle();
-    _expectChrome(tester, true);
-
-    final cancelled = await tester.startGesture(const Offset(400, 420));
-    await cancelled.cancel();
-    await tester.pumpAndSettle();
-    _expectChrome(tester, true);
-
-    final secondary = await tester.startGesture(
-      const Offset(400, 420),
-      kind: PointerDeviceKind.mouse,
-      buttons: kSecondaryButton,
-    );
-    await secondary.up();
-    await tester.pumpAndSettle();
-    _expectChrome(tester, true);
-  });
-
-  testWidgets('hidden panels survive rotation and effect changes', (tester) async {
     final settings = await _pumpReader(tester, DocumentFormat.docx);
     await _tapContent(tester, DocumentFormat.docx);
     await tester.pumpAndSettle();
@@ -237,7 +253,9 @@ Future<FolioSettingsController> _pumpReader(
   await tester.binding.setSurfaceSize(const Size(412, 915));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final settings = FolioSettingsController(
-    store: MemorySettingsStore(FolioSettings(showNavigationOnScrollUp: showOnScrollUp)),
+    store: MemorySettingsStore(
+      FolioSettings(showNavigationOnScrollUp: showOnScrollUp),
+    ),
   );
   await settings.load();
   addTearDown(settings.dispose);
@@ -256,35 +274,62 @@ Future<FolioSettingsController> _pumpReader(
     case DocumentFormat.pdf:
       renderer = _PdfStub(document: document, contentSource: source);
     case DocumentFormat.docx:
-      final word = WordDocumentRenderer(document: document, gateway: _OfficeGateway());
+      final word = WordDocumentRenderer(
+        document: document,
+        gateway: _OfficeGateway(),
+      );
       await word.open();
-      word.handleViewEvent(<Object?, Object?>{'type': 'ready', 'count': 3, 'hasText': true});
+      word.handleViewEvent(<Object?, Object?>{
+        'type': 'ready',
+        'count': 3,
+        'hasText': true,
+      });
       renderer = word;
     case DocumentFormat.pptx:
-      final slides = PowerPointDocumentRenderer(document: document, gateway: _OfficeGateway());
+      final slides = PowerPointDocumentRenderer(
+        document: document,
+        gateway: _OfficeGateway(),
+      );
       await slides.open();
-      slides.handleViewEvent(<Object?, Object?>{'type': 'ready', 'count': 3, 'hasText': true});
+      slides.handleViewEvent(<Object?, Object?>{
+        'type': 'ready',
+        'count': 3,
+        'hasText': true,
+      });
       renderer = slides;
     case DocumentFormat.txt || DocumentFormat.markdown:
-      final text = List<String>.generate(60, (i) => 'Reading paragraph $i.').join('\n\n');
-      renderer = TextDocumentRenderer(document: document, loader: TextDocumentLoader(source))
-        ..content = TextDocument(
-          text: text,
-          chunks: <TextDocumentChunk>[TextDocumentChunk(startOffset: 0, text: text)],
-          encoding: TextDocumentEncoding.utf8,
-          isMarkdown: format == DocumentFormat.markdown,
-        )
-        ..loadState = ReaderLoadState.ready;
+      final text = List<String>.generate(
+        60,
+        (i) => 'Reading paragraph $i.',
+      ).join('\n\n');
+      renderer =
+          TextDocumentRenderer(
+              document: document,
+              loader: TextDocumentLoader(source),
+            )
+            ..content = TextDocument(
+              text: text,
+              chunks: <TextDocumentChunk>[
+                TextDocumentChunk(startOffset: 0, text: text),
+              ],
+              encoding: TextDocumentEncoding.utf8,
+              isMarkdown: format == DocumentFormat.markdown,
+            )
+            ..loadState = ReaderLoadState.ready;
   }
-  await tester.pumpWidget(FolioSettingsScope(
-    controller: settings,
-    child: MaterialApp(home: ReaderScreen(
-      document: document,
-      contentSource: source,
-      initialRenderer: renderer,
-      onRemoveFromRecents: () async {},
-    )),
-  ));
+  await tester.pumpWidget(
+    FolioSettingsScope(
+      controller: settings,
+      child: MaterialApp(
+        home: ReaderScreen(
+          document: document,
+          contentSource: source,
+          initialRenderer: renderer,
+          onRemoveFromRecents: () async {},
+        ),
+      ),
+    ),
+  );
   await tester.pumpAndSettle();
   addTearDown(() async {
     await tester.pumpWidget(const SizedBox.shrink());
@@ -297,11 +342,17 @@ Future<FolioSettingsController> _pumpReader(
 Future<void> _tapContent(WidgetTester tester, DocumentFormat format) async {
   switch (format) {
     case DocumentFormat.pdf:
-      tester.widget<PdfDocumentView>(find.byType(PdfDocumentView)).onContentTap();
+      tester
+          .widget<PdfDocumentView>(find.byType(PdfDocumentView))
+          .onContentTap();
     case DocumentFormat.docx:
-      tester.widget<WordDocumentView>(find.byType(WordDocumentView)).onContentTap();
+      tester
+          .widget<WordDocumentView>(find.byType(WordDocumentView))
+          .onContentTap();
     case DocumentFormat.pptx:
-      tester.widget<PowerPointDocumentView>(find.byType(PowerPointDocumentView)).onContentTap();
+      tester
+          .widget<PowerPointDocumentView>(find.byType(PowerPointDocumentView))
+          .onContentTap();
     case DocumentFormat.txt || DocumentFormat.markdown:
       // The reader's actual pointer classifier, in the viewport's text-free
       // right padding so the test does not start word selection accidentally.
@@ -310,7 +361,9 @@ Future<void> _tapContent(WidgetTester tester, DocumentFormat format) async {
 }
 
 void _expectChrome(WidgetTester tester, bool visible) {
-  final shells = tester.widgetList<ReaderChromeShell>(find.byType(ReaderChromeShell));
+  final shells = tester.widgetList<ReaderChromeShell>(
+    find.byType(ReaderChromeShell),
+  );
   expect(shells, hasLength(6));
   for (final shell in shells) {
     expect(shell.progress.value, visible ? 1 : 0);
@@ -320,9 +373,13 @@ void _expectChrome(WidgetTester tester, bool visible) {
 void _readingScroll(WidgetTester tester, DocumentFormat format, double delta) {
   switch (format) {
     case DocumentFormat.pdf:
-      tester.widget<PdfDocumentView>(find.byType(PdfDocumentView)).onVerticalReadingGesture(delta);
+      tester
+          .widget<PdfDocumentView>(find.byType(PdfDocumentView))
+          .onVerticalReadingGesture(delta);
     case DocumentFormat.docx:
-      tester.widget<WordDocumentView>(find.byType(WordDocumentView)).onReadingGesture(delta);
+      tester
+          .widget<WordDocumentView>(find.byType(WordDocumentView))
+          .onReadingGesture(delta);
     case DocumentFormat.txt || DocumentFormat.markdown:
       _dispatchTextScroll(tester, delta);
     case DocumentFormat.pptx:
@@ -352,7 +409,9 @@ ScrollUpdateNotification _textScroll(
   metrics: _metrics(direction: direction),
   context: _textContext(tester),
   scrollDelta: delta,
-  dragDetails: dragged ? DragUpdateDetails(globalPosition: const Offset(200, 400)) : null,
+  dragDetails: dragged
+      ? DragUpdateDetails(globalPosition: const Offset(200, 400))
+      : null,
 );
 
 void _dispatchTextScroll(
@@ -360,7 +419,12 @@ void _dispatchTextScroll(
   double delta, {
   bool dragged = true,
   AxisDirection direction = AxisDirection.down,
-}) => _textScroll(tester, delta, dragged: dragged, direction: direction).dispatch(_textContext(tester));
+}) => _textScroll(
+  tester,
+  delta,
+  dragged: dragged,
+  direction: direction,
+).dispatch(_textContext(tester));
 
 /// Mount PdfDocumentView and exercise its reader callbacks without starting
 /// PDFium; this is intentionally not a PDF rendering or gesture-engine test.
@@ -387,12 +451,13 @@ class _OfficeGateway implements OfficeDocumentGateway {
 /// Model a notification already bubbled through a nested viewport without
 /// depending on the framework's private depth counter.
 class _NestedScrollNotification extends ScrollUpdateNotification {
-  _NestedScrollNotification(BuildContext context) : super(
-    metrics: _metrics(),
-    context: context,
-    scrollDelta: -100,
-    dragDetails: DragUpdateDetails(globalPosition: const Offset(200, 400)),
-  );
+  _NestedScrollNotification(BuildContext context)
+    : super(
+        metrics: _metrics(),
+        context: context,
+        scrollDelta: -100,
+        dragDetails: DragUpdateDetails(globalPosition: const Offset(200, 400)),
+      );
 
   @override
   int get depth => 1;

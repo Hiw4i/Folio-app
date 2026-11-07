@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../support/memory_tutorial_store.dart';
+
 import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
@@ -32,6 +35,7 @@ void main() {
     );
     await tester.pumpWidget(
       FolioApp(
+        tutorialStore: MemoryTutorialStore.allSeen(),
         settingsStore: MemorySettingsStore(),
         libraryRepository: InMemoryLibraryRepository(
           documents: <DocumentEntry>[document],

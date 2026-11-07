@@ -4,6 +4,10 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/memory_tutorial_store.dart';
+
+import 'package:folio/shared/theme/app_colors.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/document_entry.dart';
@@ -33,13 +37,16 @@ void main() {
   /// Foreground opacity of the retained reader-menu content: 0 while the
   /// morph is collapsed, so closed-but-mounted is distinguishable from open.
   double menuContentOpacity(WidgetTester tester) =>
-      AdaptiveGlassEffects.of(
-        tester.element(find.text('Remove from Recents')),
-      ).opacity;
+      AdaptiveGlassEffects.of(tester.element(find.text('Remove from Recents')))
+          .opacity;
 
-  Future<void> openReader(WidgetTester tester, {MemorySettingsStore? settings}) async {
+  Future<void> openReader(
+    WidgetTester tester, {
+    MemorySettingsStore? settings,
+  }) async {
     await tester.pumpWidget(
       FolioApp(
+        tutorialStore: MemoryTutorialStore.allSeen(),
         settingsStore: settings ?? MemorySettingsStore(),
         libraryRepository: InMemoryLibraryRepository(
           documents: <DocumentEntry>[document],
@@ -174,6 +181,7 @@ void main() {
 
     await tester.pumpWidget(
       FolioApp(
+        tutorialStore: MemoryTutorialStore.allSeen(),
         settingsStore: MemorySettingsStore(),
         libraryRepository: InMemoryLibraryRepository(
           documents: <DocumentEntry>[longDocument],
@@ -567,6 +575,7 @@ void main() {
     );
     await tester.pumpWidget(
       FolioApp(
+        tutorialStore: MemoryTutorialStore.allSeen(),
         settingsStore: MemorySettingsStore(),
         libraryRepository: InMemoryLibraryRepository(
           documents: <DocumentEntry>[markdownDocument],
@@ -626,33 +635,39 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1 of 1'), findsOneWidget);
   });
-  testWidgets('grabbing the scrubber hides the liquid chrome, releasing restores it', (
-    tester,
-  ) async {
-    await openReader(tester);
-    final topChrome = find.byKey(const ValueKey<String>('reader_top_chrome'));
-    final topGlass = find.descendant(
-      of: topChrome,
-      matching: find.byType(LiquidGlassControl),
-    );
-    expect(topGlass, findsWidgets);
+  testWidgets(
+    'grabbing the scrubber hides the liquid chrome, releasing restores it',
+    (tester) async {
+      await openReader(tester);
+      final topChrome = find.byKey(const ValueKey<String>('reader_top_chrome'));
+      final topGlass = find.descendant(
+        of: topChrome,
+        matching: find.byType(LiquidGlassControl),
+      );
+      expect(topGlass, findsWidgets);
 
-    final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
-    final gripCenter = tester.getCenter(grip);
-    final gesture = await tester.startGesture(gripCenter + const Offset(0, 20));
-    await gesture.moveBy(const Offset(0, 25));
-    await tester.pumpAndSettle();
-    // Hidden chrome is fully unmounted: no blur cost while scrubbing.
-    expect(
-      find.descendant(of: topChrome, matching: find.byType(LiquidGlassControl)),
-      findsNothing,
-    );
+      final grip = find.byKey(const ValueKey<String>('reader_scrub_grip'));
+      final gripCenter = tester.getCenter(grip);
+      final gesture = await tester.startGesture(
+        gripCenter + const Offset(0, 20),
+      );
+      await gesture.moveBy(const Offset(0, 25));
+      await tester.pumpAndSettle();
+      // Hidden chrome is fully unmounted: no blur cost while scrubbing.
+      expect(
+        find.descendant(
+          of: topChrome,
+          matching: find.byType(LiquidGlassControl),
+        ),
+        findsNothing,
+      );
 
-    await gesture.up();
-    await tester.pumpAndSettle();
-    // The scrub ended where the chrome was visible: it comes back.
-    expect(topGlass, findsWidgets);
-  });
+      await gesture.up();
+      await tester.pumpAndSettle();
+      // The scrub ended where the chrome was visible: it comes back.
+      expect(topGlass, findsWidgets);
+    },
+  );
 
   testWidgets('scrubbing upward never re-shows the chrome mid-gesture', (
     tester,
@@ -815,7 +830,7 @@ TextSelection? _activeSelection(InlineSpan? root) {
     if (span case TextSpan(:final text, :final children, :final style)) {
       final start = offset;
       offset += text?.length ?? 0;
-      if (style?.backgroundColor == appColors.activeSearchMatch &&
+      if (style?.backgroundColor == darkAppColors.activeSearchMatch &&
           offset > start) {
         result = TextSelection(baseOffset: start, extentOffset: offset);
       }

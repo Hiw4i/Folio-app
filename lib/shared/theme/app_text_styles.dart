@@ -1,125 +1,69 @@
 import 'package:flutter/widgets.dart';
 
-import 'app_colors.dart';
+import 'theme_colors.dart';
 
-class AppTextStyles {
-  AppTextStyles._();
+/// Semantic text styles, god_mode-style: a serif display face for the
+/// heading level, Inter for everything else. Each style is built directly
+/// through [_style] — no derived `copyWith` chains — so the set stays
+/// enumerable: heading, subheading, body, metadata and the long-form
+/// [reading] style used by the text reader surface.
+abstract final class AppTextStyles {
+  static const String _headingFont = 'PlayfairDisplay';
+  static const String _bodyFont = 'Inter';
+  static const List<String> _headingFallback = <String>[_bodyFont];
 
-  static const String _fontFamily = 'Inter';
+  static TextStyle _style(
+    BuildContext context, {
+    String fontFamily = _bodyFont,
+    List<String>? fontFamilyFallback,
+    required double fontSize,
+    FontWeight fontWeight = FontWeight.w400,
+    Color? color,
+    double? height,
+    double? letterSpacing,
+  }) => TextStyle(
+    fontFamily: fontFamily,
+    fontFamilyFallback: fontFamilyFallback,
+    fontSize: fontSize,
+    fontWeight: fontWeight,
+    color: color ?? context.colors.primary,
+    height: height,
+    letterSpacing: letterSpacing,
+  );
 
-  static TextStyle heading(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 34,
-        fontWeight: FontWeight.w600,
-        color: appColors.textPrimary,
-        height: 1.08,
-        letterSpacing: -1.1,
-      );
+  /// App-level display title (serif).
+  static TextStyle heading(BuildContext context) => _style(
+    context,
+    fontFamily: _headingFont,
+    fontFamilyFallback: _headingFallback,
+    fontSize: 34,
+    fontWeight: FontWeight.w600,
+    height: 1.08,
+    letterSpacing: -1.1,
+  );
 
-  static TextStyle subheading(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-        color: appColors.textPrimary,
-        height: 1.2,
-        letterSpacing: -0.3,
-      );
+  /// Sheet and overlay titles.
+  static TextStyle subheading(BuildContext context) => _style(
+    context,
+    fontSize: 20,
+    fontWeight: FontWeight.w600,
+    height: 1.2,
+    letterSpacing: -0.3,
+  );
 
-  static TextStyle section(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 12,
-        fontWeight: FontWeight.w600,
-        color: appColors.textSecondary,
-        height: 1.2,
-        letterSpacing: 0.8,
-      );
+  /// Default UI text; also the WidgetsApp fallback style.
+  static TextStyle body(BuildContext context) =>
+      _style(context, fontSize: 15, height: 1.35);
 
-  static TextStyle title(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 18,
-        fontWeight: FontWeight.w600,
-        color: appColors.textPrimary,
-        height: 1.25,
-      );
+  /// Long-form reading text for the text/markdown reader surface.
+  static TextStyle reading(BuildContext context) =>
+      _style(context, fontSize: 17, height: 1.62, letterSpacing: -0.05);
 
-  static TextStyle filename(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 15.5,
-        fontWeight: FontWeight.w500,
-        color: appColors.textPrimary,
-        height: 1.25,
-        letterSpacing: -0.1,
-      );
-
-  static TextStyle body(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 15,
-        fontWeight: FontWeight.w400,
-        color: appColors.textPrimary,
-        height: 1.35,
-      );
-
-  static TextStyle bodyDim(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 15,
-        fontWeight: FontWeight.w400,
-        color: appColors.textSecondary,
-        height: 1.35,
-      );
-
-  static TextStyle bodyStrong(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 15,
-        fontWeight: FontWeight.w500,
-        color: appColors.textPrimary,
-        height: 1.35,
-      );
-
-  static TextStyle metadata(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 12.5,
-        fontWeight: FontWeight.w400,
-        color: appColors.textSecondary,
-        height: 1.2,
-      );
-
-  static TextStyle small(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-        color: appColors.textPrimary,
-        height: 1.3,
-      );
-
-  static TextStyle smallDim(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 12,
-        fontWeight: FontWeight.w500,
-        color: appColors.textSecondary,
-        height: 1.3,
-      );
-
-  static TextStyle button(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 15,
-        fontWeight: FontWeight.w600,
-        color: appColors.textPrimary,
-        height: 1.2,
-      );
-
-  static TextStyle buttonSmall(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 13,
-        fontWeight: FontWeight.w500,
-        color: appColors.textSecondary,
-        height: 1.2,
-      );
-
-  static TextStyle overlayTitle(BuildContext context) => TextStyle(
-        fontFamily: _fontFamily,
-        fontSize: 19,
-        fontWeight: FontWeight.w600,
-        color: appColors.textPrimary,
-        height: 1.2,
-      );
+  /// Pale small text: metadata rows, captions, quiet labels.
+  static TextStyle metadata(BuildContext context) => _style(
+    context,
+    fontSize: 12.5,
+    color: context.colors.secondary,
+    height: 1.2,
+  );
 }

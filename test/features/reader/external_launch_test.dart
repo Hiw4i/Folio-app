@@ -5,6 +5,9 @@ import 'package:flutter/semantics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/memory_tutorial_store.dart';
+
 import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/document_entry.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
@@ -13,6 +16,7 @@ import 'package:folio/features/library/logic/library_controller.dart';
 import 'package:folio/features/library/widgets/library_screen.dart';
 import 'package:folio/features/reader/data/document_content_source.dart';
 import 'package:folio/features/reader/widgets/reader_screen.dart';
+import 'package:folio/features/tutorial/tutorial_catalog.dart';
 
 import '../../support/memory_settings_store.dart';
 
@@ -44,9 +48,11 @@ void main() {
     DocumentEntry? initialDocument,
     LibraryRepository? repository,
     Map<String, Uint8List>? contents,
+    MemoryTutorialStore? tutorialStore,
   }) async {
     await tester.pumpWidget(
       FolioApp(
+        tutorialStore: tutorialStore ?? MemoryTutorialStore.allSeen(),
         settingsStore: MemorySettingsStore(),
         libraryRepository:
             repository ??
@@ -132,6 +138,39 @@ void main() {
     expect(find.byType(ReaderScreen), findsNothing);
     expect(find.text('Folio'), findsOneWidget);
     expect(find.text('Notes.txt'), findsOneWidget);
+  });
+
+  testWidgets('first external launch shows only a tooltip by Close', (
+    tester,
+  ) async {
+    final store = MemoryTutorialStore();
+    await pumpApp(tester, initialDocument: document, tutorialStore: store);
+
+    final close = find.byKey(const ValueKey<String>('reader_back_button'));
+    final hint = find.text(
+      'Press and hold Close.\nChoose “Close app” or “Return to main”.',
+    );
+    expect(hint, findsOneWidget);
+    expect(tester.getTopLeft(hint).dy, greaterThan(tester.getCenter(close).dy));
+    expect(
+      tester.getTopLeft(hint).dy,
+      lessThan(tester.getBottomLeft(close).dy + 40),
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is CustomPaint &&
+            widget.painter.runtimeType.toString() == '_SpotlightPainter',
+      ),
+      findsNothing,
+    );
+
+    await tester.longPress(close);
+    await tester.pumpAndSettle();
+    expect(hint, findsNothing);
+    expect(find.text('Close app'), findsOneWidget);
+    expect(find.text('Return to main'), findsOneWidget);
+    expect(store.saved, {TutorialTour.externalClose});
   });
 
   testWidgets('expanded exit actions keep their semantic tap action', (

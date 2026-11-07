@@ -2,20 +2,26 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/physics.dart';
 
 import '../settings/folio_settings_scope.dart';
 import '../theme/folio_theme.dart';
 
-/// A floating bottom sheet with the reference dialog's entrance and backdrop.
-/// Pair with FolioSheetContent for the shared Settings-style surface and body.
-/// There is no fullscreen or centred-dialog presentation.
+/// A floating bottom sheet with god_mode's reference motion: the panel rides
+/// a spring (one soft overshoot in, spring-out past the viewport), and the
+/// backdrop fades on its own wall clock instead of riding the spring.
+///
+/// The sheet surface ([FolioSheetContent]) is always opaque, so the backdrop
+/// blur only ever affects the margins around it.
 abstract final class FolioBottomSheet {
   static const double cornerRadius = AppRadius.xxxl;
+
+  /// How far the panel travels below the viewport when hidden.
+  static const double hiddenTravel = 750;
 
   static Future<T?> show<T>({
     required BuildContext context,
     required WidgetBuilder builder,
-    double backdropOpacity = 0.25,
   }) async {
     if (!context.mounted) return null;
 
@@ -25,7 +31,6 @@ abstract final class FolioBottomSheet {
       builder: builder,
       barrierLabel: MaterialLocalizations.of(context).modalBarrierDismissLabel,
       disableAnimations: MediaQuery.disableAnimationsOf(context),
-      backdropOpacity: backdropOpacity,
     );
     final result = await Navigator.of(context).push<T>(route);
     await route.completed;
@@ -33,93 +38,77 @@ abstract final class FolioBottomSheet {
   }
 }
 
+/// god_mode's BounceBottomSheetRoute: route progress stays bounded for
+/// barrier and lifecycle consumers, while the panel reads the unclipped
+/// spring through [_SheetSpringVisual].
 class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
   _FolioBottomSheetRoute({
     required this.builder,
     required this.barrierLabel,
     required this.disableAnimations,
-    required this.backdropOpacity,
   });
 
-  static const _openDuration = AppDurations.sheetOpen;
-  static const _closeDuration = AppDurations.sheetClose;
-  static const _backdropRatio = 350 / 700;
-  static final _fullBlur = ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12);
-
-  /// Quantized backdrop blurs (0.05 steps → 20 entries): `ImageFilter.blur`
-  /// allocated per animation tick forces a backdrop re-raster; sharing one
-  /// filter per step keeps the animation pixel-identical but allocation-free.
-  static final Map<int, ui.ImageFilter> _blurCache = <int, ui.ImageFilter>{};
-
-  static ui.ImageFilter _blurFor(double t) {
-    final step = (t * 20).round().clamp(0, 20);
-    return _blurCache.putIfAbsent(
-      step,
-      () => ui.ImageFilter.blur(
-        sigmaX: 12 * step / 20,
-        sigmaY: 12 * step / 20,
-      ),
-    );
-  }
+  /// Captured at push time: reduced motion opens and closes instantly.
+  final bool disableAnimations;
 
   final WidgetBuilder builder;
-  final bool disableAnimations;
-  final double backdropOpacity;
 
   @override
   final String barrierLabel;
+
+  SpringSimulation? _spring;
+  _SheetSpringVisual? _visual;
 
   @override
   bool get barrierDismissible => true;
 
   @override
-  Color get barrierColor => Colors.transparent;
+  Color? get barrierColor => Colors.transparent;
 
   @override
   Duration get transitionDuration =>
-      disableAnimations ? Duration.zero : _openDuration;
+      disableAnimations ? Duration.zero : AppSprings.sheetOpenDuration;
 
   @override
   Duration get reverseTransitionDuration =>
-      disableAnimations ? Duration.zero : _closeDuration;
+      disableAnimations ? Duration.zero : AppSprings.sheetCloseDuration;
 
   @override
-  Widget buildModalBarrier() {
-    return AnimatedBuilder(
-      animation: animation!,
-      // Retain Flutter's barrier hit testing, dismissal and accessibility.
-      child: super.buildModalBarrier(),
-      builder: (context, child) {
-        final t = offstage
-            ? 0.0
-            : AppCurves.easeOut.transform(
-                (animation!.value / _backdropRatio).clamp(0.0, 1.0),
-              );
-        final blurEnabled = FolioSettingsScope.blurEnabledOf(context);
-        // Without blur the same 0.3 dim looks washed out, so compensate
-        // with a stronger scrim when blur is off.
-        final dimAlpha = (blurEnabled ? 0.3 : 0.6) * t;
-        // Quantize `t` to the blur cache steps so nearby animation ticks
-        // share the same ImageFilter instead of allocating a new one. The
-        // first step is a zero-sigma filter, not the full blur: rounding
-        // `t` down to zero must not flash a fully blurred backdrop.
-        final quantizedT = (t * 20).round() / 20;
-        final blurActive = blurEnabled && t > 0;
-        return ClipRect(
-          child: BackdropFilter(
-            key: const ValueKey<String>('folio_sheet_backdrop'),
-            enabled: blurActive,
-            filter: blurActive && quantizedT < 1
-                ? _blurFor(quantizedT)
-                : _fullBlur,
-            child: ColoredBox(
-              color: Colors.black.withValues(alpha: dimAlpha),
-              child: child,
-            ),
-          ),
-        );
-      },
-    );
+  Simulation? createSimulation({required bool forward}) {
+    final duration = forward ? transitionDuration : reverseTransitionDuration;
+    if (duration == Duration.zero) {
+      _spring = null;
+      return null;
+    }
+    final start = _visual?.value ?? controller!.value;
+    final velocity = controller!.velocity;
+    return _spring = forward
+        ? SpringSimulation(
+            AppSprings.sheetEntrance(duration),
+            start,
+            1,
+            velocity,
+            tolerance: AppSprings.scaleTolerance,
+          )
+        : FolioSheetExitSimulation(
+            AppSprings.sheetExit(duration),
+            start,
+            velocity,
+            duration,
+          );
+  }
+
+  /// Re-runs the entrance spring from the current value and velocity, e.g.
+  /// when a drag released above the dismissal threshold.
+  void settleOpen() {
+    controller!.animateWith(createSimulation(forward: true)!);
+  }
+
+  /// The bounded route progress a drag maps its finger position onto.
+  double get dragProgress => controller!.value;
+
+  set dragProgress(double value) {
+    controller!.value = value.clamp(0.0, 1.0);
   }
 
   @override
@@ -128,13 +117,29 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
     Animation<double> animation,
     Animation<double> secondaryAnimation,
   ) {
-    return _BottomSheetPosition(
-      animation: animation,
-      controller: controller!,
-      onClosing: () {
-        if (isCurrent) navigator?.pop();
-      },
-      disableAnimations: disableAnimations,
+    if (disableAnimations) {
+      controller!
+        ..duration = Duration.zero
+        ..reverseDuration = Duration.zero;
+    }
+    if (disableAnimations && controller!.isAnimating) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final controller = this.controller;
+        if (controller != null && controller.isAnimating && context.mounted) {
+          controller.value = controller.status == AnimationStatus.reverse
+              ? 0
+              : 1;
+        }
+      });
+    }
+    final visual = _visual ??= _SheetSpringVisual(
+      animation,
+      controller!,
+      () => _spring,
+    );
+    return _SheetTransition(
+      route: this,
+      visual: visual,
       child: builder(context),
     );
   }
@@ -148,171 +153,227 @@ class _FolioBottomSheetRoute<T> extends PopupRoute<T> {
   ) => child;
 }
 
-class _BottomSheetPosition extends StatefulWidget {
-  const _BottomSheetPosition({
-    required this.animation,
-    required this.controller,
-    required this.onClosing,
-    required this.disableAnimations,
-    required this.child,
-  });
-
-  final Animation<double> animation;
-  final AnimationController controller;
-  final VoidCallback onClosing;
-  final bool disableAnimations;
-  final Widget child;
+/// The route's raw progress is bounded; this channel evaluates the live
+/// spring so the panel can overshoot past progress 1 during the entrance.
+class _SheetSpringVisual extends Animation<double>
+    with AnimationWithParentMixin<double> {
+  _SheetSpringVisual(this.parent, this.controller, this.spring);
 
   @override
-  State<_BottomSheetPosition> createState() => _BottomSheetPositionState();
+  final Animation<double> parent;
+  final AnimationController controller;
+  final SpringSimulation? Function() spring;
+
+  @override
+  double get value {
+    final simulation = spring();
+    final elapsed = controller.lastElapsedDuration;
+    if (!controller.isAnimating || simulation == null || elapsed == null) {
+      return parent.value;
+    }
+    return simulation.x(elapsed.inMicroseconds / 1000000);
+  }
 }
 
-class _BottomSheetPositionState extends State<_BottomSheetPosition> {
-  Curve? _dragCurve;
-  Curve _transitionCurve = _openingCurve;
+/// Exits beyond the viewport so the exact route completion never cuts off
+/// visible spring motion. Public because the motion tests replicate it.
+class FolioSheetExitSimulation extends SpringSimulation {
+  FolioSheetExitSimulation(
+    SpringDescription spring,
+    double start,
+    double velocity,
+    Duration duration,
+  ) : _seconds = duration.inMicroseconds / 1000000,
+      super(spring, start, -0.25, velocity);
 
-  static const Curve _openingCurve = Cubic(0.24, 1.2, 0.2, 1.0);
-  static const Curve _closingCurve = AppCurves.neutral;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.animation.addStatusListener(_onStatus);
-  }
-
-  void _onStatus(AnimationStatus status) {
-    if (status == AnimationStatus.completed) {
-      if (_dragCurve != null) {
-        setState(() => _dragCurve = null);
-      }
-      return;
-    }
-    if (status == AnimationStatus.reverse) {
-      // A close that starts from the fully open sheet keeps the reference
-      // closing motion. A close that interrupts the opening keeps the
-      // opening mapping: picking the closing curve mid-flight would assign
-      // a different offset to the same animation value and teleport the
-      // surface instead of continuing from where the finger last saw it.
-      final closingFromRest = widget.animation.value >= 1;
-      final next = closingFromRest ? _closingCurve : _openingCurve;
-      if (next != _transitionCurve) {
-        setState(() => _transitionCurve = next);
-      }
-    }
-  }
-
-  void _onDragStart(DragStartDetails details) {
-    setState(() => _dragCurve = AppCurves.linear);
-  }
-
-  void _onDragEnd(DragEndDetails details, {required bool isClosing}) {
-    final start = widget.animation.value;
-    setState(() {
-      _dragCurve = start >= 1
-          ? null
-          : isClosing
-          ? AppCurves.linear
-          : _DragReleaseCurve(start);
-    });
-  }
+  final double _seconds;
 
   @override
-  void dispose() {
-    widget.animation.removeStatusListener(_onStatus);
-    super.dispose();
-  }
+  bool isDone(double time) => time >= _seconds && super.x(time) <= 0;
 
-  double get _positionValue =>
-      (_dragCurve ?? _transitionCurve).transform(widget.animation.value);
+  @override
+  double x(double time) => isDone(time) ? 0 : super.x(time);
+
+  @override
+  double dx(double time) => isDone(time) ? 0 : super.dx(time);
+}
+
+/// Dim + optional backdrop blur, fading on its own wall clock (300 ms both
+/// ways) instead of riding the sheet spring: driving the backdrop from the
+/// spring made dim + blur jump to near-max in the first frames of the open.
+class _SheetBackdrop extends StatelessWidget {
+  const _SheetBackdrop({required this.controller});
+
+  final AnimationController controller;
+
+  static const Curve blurCurve = AppCurves.neutral;
+
+  /// Peak backdrop blur: the sheet is opaque, so only its margins reveal
+  /// the backdrop — a soft ceiling is enough there.
+  static const double blurSigma = 8;
 
   @override
   Widget build(BuildContext context) {
-    final media = MediaQuery.of(context);
-    final bottom = math.max(media.viewPadding.bottom, media.viewInsets.bottom);
-    // Широкий/горизонтальный экран: диалог открывается компактным справа,
-    // а не по центру. Портрет: вся ширина минус отступы.
-    const widthThreshold = 600.0;
-    const compactMargin = AppSpacing.lg;
-    const compactSheetWidth = 400.0;
-    final alignRight = media.size.width > widthThreshold;
-    return Align(
-      alignment: alignRight ? Alignment.bottomRight : Alignment.bottomCenter,
-      child: AnimatedPadding(
-        duration: widget.disableAnimations
-            ? Duration.zero
-            : AppDurations.fast,
-        curve: AppCurves.emphasized,
-        padding: EdgeInsets.fromLTRB(
-          compactMargin + media.viewPadding.left,
-          compactMargin + media.viewPadding.top,
-          // Правый отступ: системная панель справа + запас.
-          compactMargin + media.viewPadding.right,
-          // Нижний отступ + обход клавиатуры.
-          compactMargin + bottom,
-        ),
-        // В правом углу — фиксированные 400, в портрете — вся ширина минус 32.
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: alignRight
-                ? compactSheetWidth
-                : media.size.width - compactMargin * 2,
+    final blurEnabled = FolioSettingsScope.blurEnabledOf(context);
+    return AnimatedBuilder(
+      animation: controller,
+      builder: (context, child) {
+        final t = blurCurve.transform(controller.value.clamp(0.0, 1.0));
+        return _surface(context, t, blur: blurEnabled && t > 0);
+      },
+    );
+  }
+
+  Widget _surface(BuildContext context, double t, {required bool blur}) {
+    final overlay = ColoredBox(
+      // Without blur the same 0.3 dim looks washed out, so compensate with a
+      // stronger scrim when blur is off.
+      color: Colors.black.withValues(
+        alpha: (FolioSettingsScope.blurEnabledOf(context) ? 0.3 : 0.6) * t,
+      ),
+    );
+    return Positioned.fill(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => Navigator.of(context).pop(),
+        child: BackdropFilter(
+          key: const ValueKey<String>('folio_sheet_backdrop'),
+          enabled: blur && t > 0,
+          filter: ui.ImageFilter.blur(
+            sigmaX: blur ? blurSigma * t : blurSigma,
+            sigmaY: blur ? blurSigma * t : blurSigma,
           ),
-          child: AnimatedBuilder(
-            animation: widget.animation,
-            child: SizedBox(width: double.infinity, child: widget.child),
-            builder: (context, child) {
-              // Retain Folio's ordinary drag-to-dismiss. Only a user gesture
-              // follows the sheet's height; route transitions use the exact
-              // 750px reference travel and are not made screen-adaptive.
-              final drag = _dragCurve == null
-                  ? 0.0
-                  : 1 - _dragCurve!.transform(widget.animation.value);
-              return Transform.translate(
-                key: const ValueKey<String>('folio_sheet_position'),
-                offset: Offset(
-                  0,
-                  _dragCurve == null
-                      ? 750 * (1 - _positionValue)
-                      : (AppSpacing.lg + bottom) * drag,
-                ),
-                child: FractionalTranslation(
-                  translation: Offset(0, drag),
-                  child: BottomSheet(
-                    animationController: widget.controller,
-                    enableDrag:
-                        widget.animation.status == AnimationStatus.completed ||
-                        (_dragCurve != null &&
-                            widget.animation.status != AnimationStatus.reverse),
-                    showDragHandle: false,
-                    onDragStart: _onDragStart,
-                    onDragEnd: _onDragEnd,
-                    onClosing: widget.onClosing,
-                    backgroundColor: Colors.transparent,
-                    elevation: 0,
-                    clipBehavior: Clip.none,
-                    constraints: const BoxConstraints(),
-                    builder: (context) => child!,
-                  ),
-                ),
-              );
-            },
-          ),
+          child: overlay,
         ),
       ),
     );
   }
 }
 
-/// Continue a cancelled dismissal from the release position without a jump.
-class _DragReleaseCurve extends Curve {
-  const _DragReleaseCurve(this.start);
+/// god_mode's BottomSheetTransition: the backdrop on its own clock, the
+/// panel riding the route spring with a fixed 750px travel.
+class _SheetTransition extends StatefulWidget {
+  const _SheetTransition({
+    required this.route,
+    required this.visual,
+    required this.child,
+  });
 
-  final double start;
+  final _FolioBottomSheetRoute<void> route;
+  final Animation<double> visual;
+  final Widget child;
 
   @override
-  double transformInternal(double t) {
-    if (t <= start || start >= 1) return t;
-    final remaining = (t - start) / (1 - start);
-    return start + (1 - start) * AppCurves.emphasized.transform(remaining);
+  State<_SheetTransition> createState() => _SheetTransitionState();
+}
+
+class _SheetTransitionState extends State<_SheetTransition>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _backdrop = AnimationController(
+    vsync: this,
+    duration: AppSprings.sheetCloseDuration,
+    reverseDuration: AppSprings.sheetCloseDuration,
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    _backdrop.forward();
+    widget.visual.addStatusListener(_onVisualStatus);
+  }
+
+  @override
+  void didUpdateWidget(_SheetTransition oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.visual != oldWidget.visual) {
+      oldWidget.visual.removeStatusListener(_onVisualStatus);
+      widget.visual.addStatusListener(_onVisualStatus);
+    }
+  }
+
+  void _onVisualStatus(AnimationStatus status) {
+    if (status == AnimationStatus.reverse) {
+      _backdrop.reverse();
+    } else if (status == AnimationStatus.forward) {
+      _backdrop.forward();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.visual.removeStatusListener(_onVisualStatus);
+    _backdrop.dispose();
+    super.dispose();
+  }
+
+  void _onDragUpdate(DragUpdateDetails details) {
+    final travel = MediaQuery.sizeOf(context).height;
+    if (travel <= 0) {
+      return;
+    }
+    widget.route.dragProgress =
+        widget.route.dragProgress - details.delta.dy / travel;
+  }
+
+  void _onDragEnd(DragEndDetails details) {
+    final closing =
+        widget.route.dragProgress < 0.6 ||
+        details.velocity.pixelsPerSecond.dy > 700;
+    if (closing) {
+      // The reverse spring picks the value up from the finger position; the
+      // pop also covers Back and outside-tap dismissals.
+      Navigator.of(context).pop();
+    } else {
+      widget.route.settleOpen();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    // Wide windows dock the sheet to the bottom-right; phones go full-bleed.
+    final docked = media.size.width > 600;
+    return Stack(
+      children: <Widget>[
+        _SheetBackdrop(controller: _backdrop),
+        Align(
+          alignment: docked ? Alignment.bottomRight : Alignment.bottomCenter,
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              AppSpacing.lg + media.viewPadding.left,
+              AppSpacing.lg + media.viewPadding.top,
+              AppSpacing.lg + media.viewPadding.right,
+              // Outer margin + the taller of the nav bar and the keyboard.
+              AppSpacing.lg +
+                  math.max(media.viewPadding.bottom, media.viewInsets.bottom),
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: docked ? 400 : double.infinity,
+              ),
+              child: AnimatedBuilder(
+                animation: widget.visual,
+                child: Material(color: Colors.transparent, child: widget.child),
+                builder: (context, content) {
+                  return Transform.translate(
+                    key: const ValueKey<String>('folio_sheet_position'),
+                    offset: Offset(
+                      0,
+                      FolioBottomSheet.hiddenTravel * (1 - widget.visual.value),
+                    ),
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onVerticalDragUpdate: _onDragUpdate,
+                      onVerticalDragEnd: _onDragEnd,
+                      child: content,
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 }

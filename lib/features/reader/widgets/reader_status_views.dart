@@ -39,7 +39,11 @@ class ReaderStatusView extends StatelessWidget {
 
 /// Load-failure surface with the reader's retry affordance.
 class ReaderFailureView extends StatelessWidget {
-  const ReaderFailureView({required this.failure, required this.onRetry, super.key});
+  const ReaderFailureView({
+    required this.failure,
+    required this.onRetry,
+    super.key,
+  });
 
   final ReaderFailure failure;
   final Future<void> Function() onRetry;
@@ -61,29 +65,6 @@ class ReaderFailureView extends StatelessWidget {
   }
 }
 
-/// Vertical document gradient behind the reader content.
-class ReaderBackground extends StatelessWidget {
-  const ReaderBackground({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: <Color>[
-            const Color(0xFF121315),
-            appColors.background,
-            const Color(0xFF08090A),
-          ],
-          stops: <double>[0, 0.34, 1],
-        ),
-      ),
-    );
-  }
-}
-
 /// Reading progress pill for the PDF/Office position label or the text
 /// scroll percentage.
 class ReaderProgressPill extends StatelessWidget {
@@ -96,7 +77,7 @@ class ReaderProgressPill extends StatelessWidget {
     return LiquidGlassControl(
       size: const Size(62, 32),
       child: Center(
-        child: AdaptiveGlassText(label, style: AppTextStyles.smallDim(context)),
+        child: AdaptiveGlassText(label, style: AppTextStyles.metadata(context)),
       ),
     );
   }

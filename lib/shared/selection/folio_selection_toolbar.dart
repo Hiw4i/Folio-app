@@ -556,7 +556,7 @@ class _PillDivider extends StatelessWidget {
           width: 1,
           height: 20,
           child: AdaptiveGlassDecoration(
-            child: ColoredBox(color: appColors.separator),
+            child: ColoredBox(color: context.colors.border),
           ),
         ),
       ),

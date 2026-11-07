@@ -15,7 +15,11 @@ import '../../widgets/reader_loading_view.dart';
 /// independently of window attachment (see `OfficePlatformView.emit`), or the
 /// `ready` handshake would deadlock.
 class OfficeStagedView extends StatefulWidget {
-  const OfficeStagedView({required this.renderer, required this.view, super.key});
+  const OfficeStagedView({
+    required this.renderer,
+    required this.view,
+    super.key,
+  });
 
   final OfficeDocumentRendererBase renderer;
   final Widget view;

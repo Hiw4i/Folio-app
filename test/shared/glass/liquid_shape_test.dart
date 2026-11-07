@@ -21,7 +21,10 @@ void main() {
     expect(motion.press, greaterThan(0.8));
     expect(pressed.width, greaterThan(base.width));
     expect(pressed.height, greaterThan(base.height));
-    expect(pressed.center, base.center);
+    // Rect.fromCenter → center does not round-trip exactly in floating point
+    // (e.g. 80.00000000000001), so compare with an FP epsilon.
+    expect(pressed.center.dx, moreOrLessEquals(base.center.dx));
+    expect(pressed.center.dy, moreOrLessEquals(base.center.dy));
     final pressedPath = GlassGeometryFrame.deformedCapsule(
       rect: pressed,
       origin: base.center,
@@ -49,7 +52,8 @@ void main() {
 
       expect(moving.width, greaterThan(base.width * 1.4));
       expect(moving.height, greaterThan(base.height * 1.08));
-      expect(moving.center, base.center);
+      expect(moving.center.dx, moreOrLessEquals(base.center.dx));
+      expect(moving.center.dy, moreOrLessEquals(base.center.dy));
     },
   );
 

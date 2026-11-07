@@ -16,7 +16,6 @@ import '../data/document_entry.dart';
 import '../data/library_repository.dart';
 import '../logic/library_controller.dart';
 import 'document_row.dart';
-import 'library_background.dart';
 import 'library_filter_bar.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -233,11 +232,12 @@ class _LibraryScreenState extends State<LibraryScreen>
         },
         child: ColoredBox(
           key: const ValueKey<String>('folio_surface'),
-          color: appColors.background,
+          color: context.colors.background,
           child: Stack(
             fit: StackFit.expand,
             children: <Widget>[
-              const LibraryBackground(),
+              // The parent ColoredBox already paints the flat background;
+              // the old ambient radial wash is gone by design.
               _LibraryContent(
                 controller: widget.controller,
                 scrollController: _scrollController,
@@ -285,7 +285,7 @@ class _LibraryContent extends StatelessWidget {
     final recent = controller.recentDocuments;
     final documents = controller.regularDocuments;
     return ScrollEdgeFade(
-      color: appColors.background,
+      color: context.colors.background,
       child: CustomScrollView(
         key: const ValueKey<String>('document_list'),
         controller: scrollController,
@@ -475,7 +475,7 @@ class _DocumentSliverState extends State<_DocumentSliver> {
                       ),
                       child: SizedBox(
                         height: 0.8,
-                        child: ColoredBox(color: appColors.separator),
+                        child: ColoredBox(color: context.colors.border),
                       ),
                     ),
                 ],
@@ -515,8 +515,8 @@ class _DocumentOpenContainer extends StatelessWidget {
     return OpenContainer<void>(
       tappable: false,
       closedColor: const Color(0x00000000),
-      openColor: appColors.background,
-      middleColor: appColors.background,
+      openColor: context.colors.background,
+      middleColor: context.colors.background,
       closedElevation: 0,
       openElevation: 0,
       closedShape: const RoundedRectangleBorder(),
@@ -599,7 +599,7 @@ class _SectionHeader extends StatelessWidget {
             ),
             child: Row(
               children: <Widget>[
-                Text(title, style: AppTextStyles.section(context)),
+                Text(title, style: AppTextStyles.metadata(context)),
                 SizedBox(width: AppSpacing.xs),
                 Text('$count', style: AppTextStyles.metadata(context)),
               ],
@@ -630,9 +630,9 @@ class _PermissionNotice extends StatelessWidget {
           ),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: const Color(0x0DFFFFFF),
+              color: context.colors.primary.withValues(alpha: 0.05),
               borderRadius: AppRadius.sheetRadius,
-              border: Border.all(color: const Color(0x1FFFFFFF), width: 0.8),
+              border: Border.all(color: context.colors.border, width: 0.8),
             ),
             child: Padding(
               padding: EdgeInsets.fromLTRB(
@@ -696,7 +696,7 @@ class _UnavailableRecovery extends StatelessWidget {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: onDismiss,
-                child: const ColoredBox(color: Color(0xB8000000)),
+                child: ColoredBox(color: context.colors.scrim),
               ),
             ),
             Center(
@@ -716,7 +716,7 @@ class _UnavailableRecovery extends StatelessWidget {
                       title: 'File access expired',
                       message:
                           'Folio can no longer reach "${document.name}". Select it again or remove it from Recents.',
-                      titleStyle: AppTextStyles.overlayTitle(context),
+                      titleStyle: AppTextStyles.subheading(context),
                       action: LiquidGlassButton(
                         label: 'Grant access again',
                         width: 190,
@@ -735,7 +735,7 @@ class _UnavailableRecovery extends StatelessWidget {
                           ),
                           child: Text(
                             'Remove from Recents',
-                            style: AppTextStyles.buttonSmall(context),
+                            style: AppTextStyles.metadata(context),
                           ),
                         ),
                       ),

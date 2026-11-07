@@ -58,8 +58,8 @@ const _repeatOpens = 10;
 
 Duration _openTimeout(DocumentFormat format) =>
     format == DocumentFormat.docx || format == DocumentFormat.pptx
-        ? const Duration(seconds: 60)
-        : const Duration(seconds: 30);
+    ? const Duration(seconds: 60)
+    : const Duration(seconds: 30);
 
 Future<void> main() async {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -231,21 +231,17 @@ Future<_OpenResult> _measureOpen(
   }
   final status = switch (renderer.loadState) {
     ReaderLoadState.ready => 'ready',
-    ReaderLoadState.failed => 'failed: ${renderer.failure?.message ?? 'unknown'}',
+    ReaderLoadState.failed =>
+      'failed: ${renderer.failure?.message ?? 'unknown'}',
     ReaderLoadState.loading => 'timeout',
   };
   await tester.pump(const Duration(milliseconds: 300));
-  return _OpenResult(
-    clock.elapsedMilliseconds,
-    status,
-    () async {
-      await tester.pumpWidget(const SizedBox.shrink());
-      releaseDocumentRenderer(renderer);
-      scrollController.dispose();
-      await tester.pump(const Duration(milliseconds: 100));
-    },
-    _driversFor(renderer, scrollController),
-  );
+  return _OpenResult(clock.elapsedMilliseconds, status, () async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    releaseDocumentRenderer(renderer);
+    scrollController.dispose();
+    await tester.pump(const Duration(milliseconds: 100));
+  }, _driversFor(renderer, scrollController));
 }
 
 _DriveDrivers? _driversFor(
@@ -268,26 +264,29 @@ _DriveDrivers? _driversFor(
 /// posted its ready event) instead of a background prepare step. Text builds
 /// its real document view too — otherwise the frame windows would measure an
 /// empty scene.
-Widget _surface(DocumentRenderer renderer, AutoScrollController scrollController) {
+Widget _surface(
+  DocumentRenderer renderer,
+  AutoScrollController scrollController,
+) {
   return Directionality(
     textDirection: TextDirection.ltr,
     child: MediaQuery.fromView(
       view: WidgetsBinding.instance.platformDispatcher.views.first,
       child: switch (renderer) {
         PdfDocumentRenderer() => PdfDocumentView(
-            renderer: renderer,
-            onContentTap: () {},
-            onVerticalReadingGesture: (_) {},
-          ),
+          renderer: renderer,
+          onContentTap: () {},
+          onVerticalReadingGesture: (_) {},
+        ),
         OfficeDocumentRendererBase() => OfficeDocumentPlatformView(
-            renderer: renderer,
-            onContentTap: () {},
-          ),
+          renderer: renderer,
+          onContentTap: () {},
+        ),
         TextDocumentRenderer() => TextDocumentView(
-            renderer: renderer,
-            scrollController: scrollController,
-            activeHitKey: GlobalKey(),
-          ),
+          renderer: renderer,
+          scrollController: scrollController,
+          activeHitKey: GlobalKey(),
+        ),
         _ => const SizedBox.shrink(),
       },
     ),

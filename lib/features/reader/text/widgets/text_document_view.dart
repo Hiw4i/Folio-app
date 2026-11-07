@@ -37,7 +37,6 @@ final MarkdownElementBuilder _passiveSearchHitBuilder = _SearchHitBuilder(
 final MarkdownElementBuilder _markBuilder = _MarkBuilder();
 final List<markdown.InlineSyntax> _markdownInlineSyntaxes =
     <markdown.InlineSyntax>[..._searchHitSyntaxes, HighlightSyntax()];
-final MarkdownStyleSheet _markdownStyleSheet = _createMarkdownStyleSheet();
 
 class TextDocumentView extends StatelessWidget {
   const TextDocumentView({
@@ -67,7 +66,7 @@ class TextDocumentView extends StatelessWidget {
       scrollController: scrollController,
       onSelectionChanged: onSelectionChanged,
       child: ScrollEdgeFade(
-        color: appColors.background,
+        color: context.colors.background,
         child: ListView.builder(
           key: const ValueKey<String>('reader_content'),
           controller: scrollController,
@@ -144,16 +143,10 @@ class _PlainTextChunk extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final baseStyle = AppTextStyles.body(context).copyWith(
-      fontSize: 17,
-      height: 1.62,
-      fontWeight: FontWeight.w400,
-      letterSpacing: -0.05,
-    );
     return Text.rich(
       TextSpan(
-        style: baseStyle,
-        children: _highlightedSpans(chunk, hits, activeHit, baseStyle),
+        style: AppTextStyles.reading(context),
+        children: _highlightedSpans(chunk, hits, activeHit, context.colors),
       ),
       key: activeHit == null ? null : activeHitKey,
       textAlign: TextAlign.start,
@@ -161,11 +154,14 @@ class _PlainTextChunk extends StatelessWidget {
   }
 }
 
+/// Splits [chunk] into plain and highlighted spans. Highlight spans only
+/// override the search colors and weight — size and height inherit from the
+/// parent [TextSpan] style.
 List<InlineSpan> _highlightedSpans(
   TextDocumentChunk chunk,
   List<ReaderSearchHit> hits,
   ReaderSearchHit? activeHit,
-  TextStyle baseStyle,
+  AppColors colors,
 ) {
   if (hits.isEmpty) {
     return <InlineSpan>[TextSpan(text: chunk.text)];
@@ -191,11 +187,11 @@ List<InlineSpan> _highlightedSpans(
     result.add(
       TextSpan(
         text: chunk.text.substring(start, end),
-        style: baseStyle.copyWith(
-          color: active ? appColors.activeSearchText : appColors.textPrimary,
+        style: TextStyle(
+          color: active ? colors.activeSearchText : colors.primary,
           backgroundColor: active
-              ? appColors.activeSearchMatch
-              : appColors.searchMatch,
+              ? colors.activeSearchMatch
+              : colors.searchMatch,
           fontWeight: active ? FontWeight.w600 : FontWeight.w400,
         ),
       ),
@@ -241,7 +237,7 @@ class _MarkdownChunk extends StatelessWidget {
         ),
         'mark': _markBuilder,
       },
-      styleSheet: _markdownStyleSheet,
+      styleSheet: _readerMarkdownStyleSheet(context),
     );
   }
 }
@@ -298,9 +294,8 @@ class _MarkBuilder extends MarkdownElementBuilder {
   ) {
     return Text(
       element.textContent,
-      style: (parentStyle ?? preferredStyle)?.copyWith(
-        backgroundColor: const Color(0x59D8B44A),
-      ),
+      // Single-property override: the rest merges from the parent style.
+      style: const TextStyle(backgroundColor: Color(0x59D8B44A)),
     );
   }
 }
@@ -321,13 +316,17 @@ class _SearchHitBuilder extends MarkdownElementBuilder {
     return DecoratedBox(
       key: active ? targetKey : null,
       decoration: BoxDecoration(
-        color: active ? appColors.activeSearchMatch : appColors.searchMatch,
+        color: active
+            ? context.colors.activeSearchMatch
+            : context.colors.searchMatch,
         borderRadius: AppRadius.xsRadius,
       ),
       child: Text(
         element.textContent,
-        style: (parentStyle ?? preferredStyle)?.copyWith(
-          color: active ? appColors.activeSearchText : appColors.textPrimary,
+        style: TextStyle(
+          color: active
+              ? context.colors.activeSearchText
+              : context.colors.primary,
           fontWeight: active ? FontWeight.w600 : null,
         ),
       ),
@@ -335,65 +334,83 @@ class _SearchHitBuilder extends MarkdownElementBuilder {
   }
 }
 
-MarkdownStyleSheet _createMarkdownStyleSheet() {
-  const body = TextStyle(
-    fontFamily: 'Inter',
-    color: Color(0xFFF4F3EF),
-    fontSize: 17,
-    height: 1.58,
-    fontWeight: FontWeight.w400,
-    letterSpacing: -0.05,
-  );
-  const heading = TextStyle(
-    fontFamily: 'Inter',
-    color: Color(0xFFF4F3EF),
-    fontWeight: FontWeight.w600,
-    height: 1.18,
-    letterSpacing: -0.4,
-  );
+/// Text style for the markdown reader surface, derived from
+/// [AppTextStyles.reading] metrics; markdown elements override single
+/// properties through the named parameters instead of `copyWith` chains.
+TextStyle _readerStyle(
+  BuildContext context, {
+  double? fontSize,
+  FontWeight fontWeight = FontWeight.w400,
+  FontStyle? fontStyle,
+  Color? color,
+  String? fontFamily,
+  TextDecoration? decoration,
+  Color? backgroundColor,
+}) => TextStyle(
+  fontFamily: fontFamily ?? 'Inter',
+  fontSize: fontSize ?? 17,
+  height: 1.58,
+  fontWeight: fontWeight,
+  fontStyle: fontStyle,
+  color: color ?? context.colors.primary,
+  letterSpacing: -0.05,
+  decoration: decoration,
+  backgroundColor: backgroundColor,
+);
+
+/// Markdown typography for the current theme: primary for content,
+/// secondary for de-emphasized elements, [AppColors.border] for hairlines
+/// and [AppColors.surface] for code blocks.
+MarkdownStyleSheet _readerMarkdownStyleSheet(BuildContext context) {
+  final colors = context.colors;
   return MarkdownStyleSheet(
-    p: body,
-    a: body.copyWith(
-      color: const Color(0xFFD8D6CF),
+    p: _readerStyle(context),
+    a: _readerStyle(
+      context,
+      color: colors.secondary,
       decoration: TextDecoration.underline,
-      decorationColor: const Color(0xFF6F706D),
     ),
-    h1: heading.copyWith(fontSize: 30),
-    h2: heading.copyWith(fontSize: 25),
-    h3: heading.copyWith(fontSize: 21),
-    h4: heading.copyWith(fontSize: 18),
-    h5: heading.copyWith(fontSize: 17),
-    h6: heading.copyWith(fontSize: 16),
-    em: body.copyWith(fontStyle: FontStyle.italic),
-    strong: body.copyWith(fontWeight: FontWeight.w600),
-    del: body.copyWith(decoration: TextDecoration.lineThrough),
-    code: body.copyWith(
+    h1: _readerStyle(context, fontSize: 30, fontWeight: FontWeight.w600),
+    h2: _readerStyle(context, fontSize: 25, fontWeight: FontWeight.w600),
+    h3: _readerStyle(context, fontSize: 21, fontWeight: FontWeight.w600),
+    h4: _readerStyle(context, fontSize: 18, fontWeight: FontWeight.w600),
+    h5: _readerStyle(context, fontSize: 17, fontWeight: FontWeight.w600),
+    h6: _readerStyle(context, fontSize: 16, fontWeight: FontWeight.w600),
+    em: _readerStyle(context, fontStyle: FontStyle.italic),
+    strong: _readerStyle(context, fontWeight: FontWeight.w600),
+    del: _readerStyle(context, decoration: TextDecoration.lineThrough),
+    code: _readerStyle(
+      context,
       fontFamily: 'monospace',
       fontSize: 15,
-      color: const Color(0xFFE3E0D7),
-      backgroundColor: const Color(0x14FFFFFF),
+      backgroundColor: colors.surface,
     ),
-    blockquote: body.copyWith(color: const Color(0xFFA7A6A1)),
+    blockquote: _readerStyle(context, color: colors.secondary),
     blockquotePadding: const EdgeInsets.fromLTRB(16, 8, 14, 8),
-    blockquoteDecoration: const BoxDecoration(
-      color: Color(0x0AFFFFFF),
-      border: Border(left: BorderSide(color: Color(0x52FFFFFF), width: 2)),
+    blockquoteDecoration: BoxDecoration(
+      color: colors.primary.withValues(alpha: 0.04),
+      border: Border(
+        left: BorderSide(
+          color: colors.primary.withValues(alpha: 0.30),
+          width: 2,
+        ),
+      ),
     ),
     codeblockPadding: const EdgeInsets.all(14),
     codeblockDecoration: BoxDecoration(
-      color: const Color(0xA3131518),
+      color: colors.surface,
       borderRadius: AppRadius.mdRadius,
-      border: Border.all(color: const Color(0x18FFFFFF), width: 0.8),
+      border: Border.all(color: colors.border, width: 0.8),
     ),
-    listBullet: body.copyWith(color: const Color(0xFFA7A6A1)),
+    listBullet: _readerStyle(context, color: colors.secondary),
     listIndent: 25,
     blockSpacing: 13,
-    tableHead: body.copyWith(fontWeight: FontWeight.w600),
-    tableBody: body.copyWith(fontSize: 15),
-    tableBorder: TableBorder.all(color: const Color(0x24FFFFFF), width: 0.8),
+    tableHead: _readerStyle(context, fontWeight: FontWeight.w600),
+    tableBody: _readerStyle(context, fontSize: 15),
+    tableBorder: TableBorder.all(color: colors.border, width: 0.8),
     tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-    horizontalRuleDecoration: const BoxDecoration(
-      border: Border(top: BorderSide(color: Color(0x24FFFFFF), width: 0.8)),
+    horizontalRuleDecoration: BoxDecoration(
+      border: Border(top: BorderSide(color: colors.border, width: 0.8)),
     ),
   );
 }
@@ -412,9 +429,9 @@ class _BlockedImage extends StatelessWidget {
         constraints: const BoxConstraints(minHeight: 72),
         padding: EdgeInsets.all(AppSpacing.lg),
         decoration: BoxDecoration(
-          color: const Color(0x0AFFFFFF),
+          color: context.colors.primary.withValues(alpha: 0.04),
           borderRadius: AppRadius.mdRadius,
-          border: Border.all(color: const Color(0x18FFFFFF), width: 0.8),
+          border: Border.all(color: context.colors.border, width: 0.8),
         ),
         alignment: Alignment.center,
         child: Text(

@@ -7,7 +7,10 @@ void main() {
     final menu = PdfSelectionContextMenu(
       primaryAnchor: const Offset(80, 120),
       buttonItems: <ContextMenuButtonItem>[
-        ContextMenuButtonItem(onPressed: () {}, type: ContextMenuButtonType.copy),
+        ContextMenuButtonItem(
+          onPressed: () {},
+          type: ContextMenuButtonType.copy,
+        ),
       ],
     );
     // This checks the returned widget's type, not a descendant Align. A wrapper
@@ -42,6 +45,9 @@ void main() {
       await tester.pump(const Duration(milliseconds: 16));
       expect(tester.takeException(), isNull);
     }
-    expect(find.byKey(const ValueKey<String>('folio_toolbar_copy')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('folio_toolbar_copy')),
+      findsOneWidget,
+    );
   });
 }

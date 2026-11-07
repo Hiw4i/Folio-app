@@ -10,12 +10,51 @@ import 'package:folio/features/reader/powerpoint/logic/powerpoint_document_rende
 import 'package:folio/features/reader/powerpoint/widgets/powerpoint_document_view.dart';
 import 'package:folio/features/reader/widgets/reader_chrome.dart';
 import 'package:folio/features/reader/widgets/reader_screen.dart';
+import 'package:folio/features/tutorial/logic/tutorial_controller.dart';
+import 'package:folio/features/tutorial/tutorial_catalog.dart';
+import 'package:folio/features/tutorial/widgets/tutorial_scope.dart';
+import 'package:folio/features/tutorial/widgets/tutorial_swipe_up_cue.dart';
 import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
+import 'package:folio/shared/widgets/info_notice/info_notice_tooltip.dart';
+import 'package:lucide_flutter/lucide_flutter.dart';
+
+import '../../support/memory_tutorial_store.dart';
 
 // Widget-side bridge contract. Browser tests separately exercise actual slide
 // taps/swipes. A fake session avoids requiring an Android WebView here.
 void main() {
-  testWidgets('PPTX controls toggle once per bridge centre tap', (tester) async {
+  testWidgets('PPTX shows only a rising arrow until the overview opens', (
+    tester,
+  ) async {
+    final store = MemoryTutorialStore();
+    final tutorial = TutorialController(store: store);
+    addTearDown(tutorial.dispose);
+    await tutorial.load();
+    final renderer = await _pumpReader(tester, tutorial: tutorial);
+
+    final cue = find.byType(TutorialSwipeUpCue);
+    final arrow = find.descendant(
+      of: cue,
+      matching: find.byIcon(LucideIcons.chevronUp),
+    );
+    expect(arrow, findsOneWidget);
+    expect(find.byType(InfoNoticeTooltip), findsNothing);
+    final initialY = tester.getCenter(arrow).dy;
+    await tester.pump(const Duration(milliseconds: 120));
+    expect(tester.getCenter(arrow).dy, lessThan(initialY));
+
+    renderer.handleViewEvent(<Object?, Object?>{
+      'type': 'overview',
+      'open': true,
+    });
+    await tester.pumpAndSettle();
+    expect(cue, findsNothing);
+    expect(store.saved, {TutorialTour.pptxOverview});
+  });
+
+  testWidgets('PPTX controls toggle once per bridge centre tap', (
+    tester,
+  ) async {
     await _pumpReader(tester);
     _expectChrome(tester, visible: true);
     await _centreTap(tester);
@@ -78,7 +117,9 @@ void main() {
       if (!visible) await _centreTap(tester);
       for (final current in <int>[2, 3, 1]) {
         renderer.handleViewEvent(<Object?, Object?>{
-          'type': 'position', 'current': current, 'count': 3,
+          'type': 'position',
+          'current': current,
+          'count': 3,
         });
         await tester.pumpAndSettle();
         _expectChrome(tester, visible: visible);
@@ -90,9 +131,9 @@ void main() {
     tester,
   ) async {
     await _pumpReader(tester);
-    tester.state<LiquidSearchControlState>(
-      find.byType(LiquidSearchControl),
-    ).open();
+    tester
+        .state<LiquidSearchControlState>(find.byType(LiquidSearchControl))
+        .open();
     await tester.pumpAndSettle();
     await _centreTap(tester);
     _expectChrome(tester, visible: true);
@@ -103,13 +144,15 @@ void main() {
   ) async {
     final renderer = await _pumpReader(tester);
     renderer.handleViewEvent(<Object?, Object?>{
-      'type': 'overview', 'open': true,
+      'type': 'overview',
+      'open': true,
     });
     await tester.pumpAndSettle();
     _expectChrome(tester, visible: false);
 
     renderer.handleViewEvent(<Object?, Object?>{
-      'type': 'overview', 'open': false,
+      'type': 'overview',
+      'open': false,
     });
     await tester.pumpAndSettle();
     _expectChrome(tester, visible: true);
@@ -119,18 +162,20 @@ void main() {
     tester,
   ) async {
     final renderer = await _pumpReader(tester);
-    tester.state<LiquidSearchControlState>(
-      find.byType(LiquidSearchControl),
-    ).open();
+    tester
+        .state<LiquidSearchControlState>(find.byType(LiquidSearchControl))
+        .open();
     await tester.pumpAndSettle();
     _expectChrome(tester, visible: true);
     renderer.handleViewEvent(<Object?, Object?>{
-      'type': 'overview', 'open': true,
+      'type': 'overview',
+      'open': true,
     });
     await tester.pumpAndSettle();
     _expectChrome(tester, visible: false);
     renderer.handleViewEvent(<Object?, Object?>{
-      'type': 'overview', 'open': false,
+      'type': 'overview',
+      'open': false,
     });
     await tester.pumpAndSettle();
     // The pre-overview state had the search expanded: it comes back.
@@ -142,7 +187,8 @@ void main() {
   ) async {
     final renderer = await _pumpReader(tester);
     renderer.handleViewEvent(<Object?, Object?>{
-      'type': 'overview', 'open': true,
+      'type': 'overview',
+      'open': true,
     });
     await tester.pumpAndSettle();
     await tester.binding.handlePopRoute();
@@ -171,7 +217,10 @@ void main() {
   });
 }
 
-Future<PowerPointDocumentRenderer> _pumpReader(WidgetTester tester) async {
+Future<PowerPointDocumentRenderer> _pumpReader(
+  WidgetTester tester, {
+  TutorialController? tutorial,
+}) async {
   await tester.binding.setSurfaceSize(const Size(412, 915));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   final document = DocumentEntry(
@@ -188,17 +237,25 @@ Future<PowerPointDocumentRenderer> _pumpReader(WidgetTester tester) async {
   );
   await renderer.open();
   renderer.handleViewEvent(<Object?, Object?>{
-    'type': 'ready', 'count': 3, 'hasText': true,
+    'type': 'ready',
+    'count': 3,
+    'hasText': true,
   });
-  await tester.pumpWidget(MaterialApp(
+  final app = MaterialApp(
     home: ReaderScreen(
       document: document,
       contentSource: MemoryDocumentContentSource(<String, Uint8List>{}),
       initialRenderer: renderer,
       onRemoveFromRecents: () async {},
     ),
-  ));
-  await tester.pumpAndSettle();
+  );
+  if (tutorial == null) {
+    await tester.pumpWidget(app);
+    await tester.pumpAndSettle();
+  } else {
+    await tester.pumpWidget(TutorialScope(controller: tutorial, child: app));
+    await tester.pump();
+  }
   // ReaderScreen owns/disposes the adopted renderer.
   addTearDown(() async {
     await tester.pumpWidget(const SizedBox.shrink());
@@ -208,9 +265,9 @@ Future<PowerPointDocumentRenderer> _pumpReader(WidgetTester tester) async {
 }
 
 Future<void> _centreTap(WidgetTester tester) async {
-  tester.widget<PowerPointDocumentView>(
-    find.byType(PowerPointDocumentView),
-  ).onContentTap();
+  tester
+      .widget<PowerPointDocumentView>(find.byType(PowerPointDocumentView))
+      .onContentTap();
   await tester.pumpAndSettle();
 }
 
@@ -223,7 +280,11 @@ void _expectChrome(WidgetTester tester, {required bool visible}) {
   expect(find.byType(ReaderChromeShell), findsWidgets);
 }
 
-void _dispatchScroll(WidgetTester tester, AxisDirection direction, double delta) {
+void _dispatchScroll(
+  WidgetTester tester,
+  AxisDirection direction,
+  double delta,
+) {
   final context = tester.element(find.byType(PowerPointDocumentView));
   ScrollUpdateNotification(
     metrics: FixedScrollMetrics(

@@ -97,10 +97,7 @@ void main() {
   }
 }
 
-Future<void> _pumpSheet(
-  WidgetTester tester,
-  DocumentEntry document,
-) async {
+Future<void> _pumpSheet(WidgetTester tester, DocumentEntry document) async {
   await tester.pumpWidget(
     MaterialApp(
       home: Center(

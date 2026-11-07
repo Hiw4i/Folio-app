@@ -61,7 +61,8 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     // failed with an encoding problem never will.
     textAvailability: switch (loadState) {
       ReaderLoadState.ready => ReaderTextAvailability.present,
-      ReaderLoadState.failed when failure?.kind == ReaderFailureKind.unsupportedEncoding =>
+      ReaderLoadState.failed
+          when failure?.kind == ReaderFailureKind.unsupportedEncoding =>
         ReaderTextAvailability.unsupported,
       _ => ReaderTextAvailability.unknown,
     },
@@ -80,7 +81,9 @@ class TextDocumentRenderer extends ChangeNotifier implements DocumentRenderer {
     if (loadState != ReaderLoadState.ready) {
       return ReaderSearchPhase.waitingForSource;
     }
-    return isSearching ? ReaderSearchPhase.searching : ReaderSearchPhase.complete;
+    return isSearching
+        ? ReaderSearchPhase.searching
+        : ReaderSearchPhase.complete;
   }
 
   @override

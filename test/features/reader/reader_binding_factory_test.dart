@@ -77,14 +77,12 @@ void main() {
   });
 
   test('the text binding owns its scroll resources and reports progress', () {
-    final binding =
-        createReaderBinding(
-              TextDocumentRenderer(
-                document: stubEntry('g.txt'),
-                loader: TextDocumentLoader(contentSource),
-              ),
-            )
-            as TextReaderBinding;
+    final binding = createReaderBinding(
+      TextDocumentRenderer(
+        document: stubEntry('g.txt'),
+        loader: TextDocumentLoader(contentSource),
+      ),
+    ) as TextReaderBinding;
     addTearDown(binding.dispose);
 
     expect(binding.navigation.snapshot.positionLabel, '0%');

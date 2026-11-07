@@ -1,31 +1,43 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../support/memory_tutorial_store.dart';
+
 import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/shared/glass/widgets/liquid_search_control.dart';
+import 'package:folio/shared/settings/folio_settings.dart';
 
 import '../support/memory_settings_store.dart';
+
+Future<Finder> _pumpLibrary(WidgetTester tester, FolioSettings settings) async {
+  await tester.binding.setSurfaceSize(const Size(412, 915));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+
+  await tester.pumpWidget(
+    FolioApp(
+      tutorialStore: MemoryTutorialStore.allSeen(),
+      settingsStore: MemorySettingsStore(settings),
+      libraryRepository: InMemoryLibraryRepository.demo(),
+    ),
+  );
+  await tester.pumpAndSettle();
+  return find.byKey(const ValueKey<String>('folio_surface'));
+}
 
 void main() {
   setUpAll(() async {
     final inter = FontLoader('Inter')
       ..addFont(rootBundle.load('assets/fonts/Inter.ttf'));
     await inter.load();
+    final playfair = FontLoader('PlayfairDisplay')
+      ..addFont(rootBundle.load('assets/fonts/PlayfairDisplay.ttf'));
+    await playfair.load();
   });
 
   testWidgets('library and liquid search visual states', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(412, 915));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-
-    await tester.pumpWidget(
-      FolioApp(
-        settingsStore: MemorySettingsStore(),
-        libraryRepository: InMemoryLibraryRepository.demo(),
-      ),
-    );
-    await tester.pumpAndSettle();
-    final surface = find.byKey(const ValueKey<String>('folio_surface'));
+    final surface = await _pumpLibrary(tester, const FolioSettings());
 
     await expectLater(
       surface,
@@ -87,5 +99,14 @@ void main() {
       surface,
       matchesGoldenFile('library_search_expanded.png'),
     );
+  });
+
+  testWidgets('light theme restyles the library surface', (tester) async {
+    final surface = await _pumpLibrary(
+      tester,
+      const FolioSettings(themeMode: FolioThemeMode.light),
+    );
+
+    await expectLater(surface, matchesGoldenFile('library_light_theme.png'));
   });
 }

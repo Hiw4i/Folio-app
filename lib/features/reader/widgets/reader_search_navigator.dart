@@ -19,12 +19,10 @@ class ReaderSearchNavigator extends StatelessWidget {
 
   final DocumentRenderer renderer;
 
-  static TextStyle _labelStyle(BuildContext context) => TextStyle(
-    fontFamily: 'Inter',
-    color: appColors.textPrimary,
-    fontSize: 12.5,
-    fontWeight: FontWeight.w500,
-  );
+  // Same readout language as the bottom progress pill: one metadata style
+  // for both glass readouts; the pill width measures with the same style.
+  static TextStyle _labelStyle(BuildContext context) =>
+      AppTextStyles.metadata(context);
   static const double _height = 46;
   static const double _leftPadding = 15;
   static const double _rightPadding = 6;
@@ -53,9 +51,10 @@ class ReaderSearchNavigator extends StatelessWidget {
         // No text layer at all is a different fact from zero hits.
         ReaderTextAvailability.absent ||
         ReaderTextAvailability.unsupported => 'No searchable text',
-        _ => state.hitCount == 0
-            ? 'No matches'
-            : '${state.activeHitIndex + 1} of ${state.hitCount}',
+        _ =>
+          state.hitCount == 0
+              ? 'No matches'
+              : '${state.activeHitIndex + 1} of ${state.hitCount}',
       },
     };
     final labelWidth = _labelMeasurer.widthOf(

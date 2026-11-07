@@ -69,7 +69,7 @@ class _DocumentRowState extends State<DocumentRow> {
                           document.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: AppTextStyles.filename(context),
+                          style: AppTextStyles.body(context),
                         ),
                         SizedBox(height: AppSpacing.xs),
                         Text(
@@ -84,11 +84,7 @@ class _DocumentRowState extends State<DocumentRow> {
                       padding: EdgeInsets.only(left: AppSpacing.md),
                       child: Text(
                         'Unavailable',
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          color: appColors.textTertiary,
-                          fontSize: 11,
-                        ),
+                        style: AppTextStyles.metadata(context),
                       ),
                     ),
                 ],
@@ -112,9 +108,9 @@ class _FormatGlyph extends StatelessWidget {
       width: 48,
       height: 48,
       decoration: BoxDecoration(
-        color: const Color(0x0BFFFFFF),
+        color: context.colors.primary.withValues(alpha: 0.044),
         borderRadius: AppRadius.controlRadius,
-        border: Border.all(color: appColors.separator, width: 0.8),
+        border: Border.all(color: context.colors.border, width: 0.8),
       ),
       alignment: Alignment.center,
       child: format.iconPath != null
@@ -123,14 +119,14 @@ class _FormatGlyph extends StatelessWidget {
               width: 24,
               height: 24,
               colorFilter: ColorFilter.mode(
-                appColors.textPrimary.withValues(alpha: 0.88),
+                context.colors.primary.withValues(alpha: 0.88),
                 BlendMode.srcIn,
               ),
             )
           : Icon(
               format.icon,
               size: 24,
-              color: appColors.textPrimary.withValues(alpha: 0.88),
+              color: context.colors.primary.withValues(alpha: 0.88),
             ),
     );
   }

@@ -12,8 +12,7 @@ import '../../../shared/theme/folio_theme.dart';
 /// view; only the content area shows the status: animated dots plus the
 /// single line `Opening document`. A short grace period keeps fast documents
 /// from flashing a spinner for a single frame: the dots fade in only when
-/// loading actually takes noticeable time. Plain-text formats decode
-/// especially fast, so their grace is doubled.
+/// loading actually takes noticeable time.
 class ReaderLoadingView extends StatefulWidget {
   const ReaderLoadingView({
     required this.document,
@@ -27,17 +26,9 @@ class ReaderLoadingView extends StatefulWidget {
   /// (Office staged overlay, PDF byte banner).
   final bool immediate;
 
-  static const Duration grace = AppDurations.grace;
-  static const Duration textGrace = AppDurations.slow;
+  /// A loading delay threshold, not motion — hence outside [AppDurations].
+  static const Duration grace = Duration(milliseconds: 350);
   static const Duration fade = AppDurations.fast;
-
-  static TextStyle titleStyle(BuildContext context) => TextStyle(
-        fontFamily: 'Inter',
-        color: appColors.textPrimary,
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-        letterSpacing: -0.25,
-      );
 
   @override
   State<ReaderLoadingView> createState() => _ReaderLoadingViewState();
@@ -65,14 +56,7 @@ class _ReaderLoadingViewState extends State<ReaderLoadingView> {
       _visible = true;
       return;
     }
-    final effectiveGrace = switch (widget.document.format) {
-      DocumentFormat.txt ||
-      DocumentFormat.markdown => ReaderLoadingView.textGrace,
-      DocumentFormat.pdf ||
-      DocumentFormat.docx ||
-      DocumentFormat.pptx => ReaderLoadingView.grace,
-    };
-    _graceTimer = Timer(effectiveGrace, () {
+    _graceTimer = Timer(ReaderLoadingView.grace, () {
       if (mounted) {
         setState(() => _visible = true);
       }
@@ -114,7 +98,7 @@ class _ReaderLoadingViewState extends State<ReaderLoadingView> {
                     Text(
                       'Opening document',
                       textAlign: TextAlign.center,
-                      style: ReaderLoadingView.titleStyle(context),
+                      style: AppTextStyles.subheading(context),
                     ),
                   ],
                 ),
@@ -210,7 +194,7 @@ class _Dot extends StatelessWidget {
       height: 6,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: appColors.textPrimary.withValues(alpha: opacity),
+        color: context.colors.primary.withValues(alpha: opacity),
       ),
     );
   }

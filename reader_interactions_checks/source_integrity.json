@@ -1,8 +1,0 @@
-{
-  "validation_kind": "structural_only_not_dart_analysis",
-  "dart_files": 119,
-  "local_imports_checked": 384,
-  "test_declarations": 205,
-  "issues": [],
-  "passed": true
-}

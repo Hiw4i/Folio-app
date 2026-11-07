@@ -2,6 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:folio/shared/theme/app_colors.dart';
 import 'package:folio/shared/selection/selection_visuals.dart';
 
 void main() {
@@ -186,7 +187,10 @@ void main() {
       Rect.fromLTWH(120, 10, 80, 20),
     ];
     final recorder = ui.PictureRecorder();
-    FolioSelectionHighlightPainter(() => rects).paint(Canvas(recorder), size);
+    FolioSelectionHighlightPainter(
+      () => rects,
+      selectionColor: darkAppColors.selection,
+    ).paint(Canvas(recorder), size);
     final picture = recorder.endRecording();
     final pixels = await tester.runAsync(() async {
       final image = await picture.toImage(240, 60);

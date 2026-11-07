@@ -8,22 +8,21 @@ import 'package:folio/shared/glass/surface/liquid_surface_style.dart';
 import 'package:folio/shared/settings/folio_settings.dart';
 import 'package:folio/shared/settings/folio_settings_controller.dart';
 import 'package:folio/shared/settings/folio_settings_scope.dart';
+import 'package:folio/shared/theme/glass_colors.dart';
 
 import '../../support/memory_settings_store.dart';
 
 void main() {
   test('rim reflection is uneven and has no angular seam', () {
-    final gradient = LiquidSurfaceStyle.rimGradient;
-    expect(gradient.colors.first, gradient.colors.last);
-    expect(gradient.stops!.first, 0);
-    expect(gradient.stops!.last, 1);
-    final opacities = gradient.colors.map((color) => color.a).toList()..sort();
+    final rimColors = darkGlassColors.rimColors;
+    expect(rimColors.first, rimColors.last);
+    final opacities = rimColors.map((color) => color.a).toList()..sort();
     expect(opacities.last - opacities.first, greaterThan(0.4));
     expect(
-      LiquidSurfaceStyle.opaqueFill.computeLuminance(),
+      darkGlassColors.opaqueFill.computeLuminance(),
       greaterThan(const Color(0xFF202123).computeLuminance()),
     );
-    expect(LiquidSurfaceStyle.opaqueFill.a, 1);
+    expect(darkGlassColors.opaqueFill.a, 1);
   });
 
   testWidgets('blur-off shell retains its inner edge and lighter opaque fill', (
@@ -34,30 +33,47 @@ void main() {
     );
     await controller.load();
     addTearDown(controller.dispose);
-    final path = Path()..addRRect(RRect.fromRectAndRadius(
-      const Rect.fromLTWH(20, 20, 120, 60),
-      const Radius.circular(20),
-    ));
-    await tester.pumpWidget(FolioSettingsScope(
-      controller: controller,
-      child: MaterialApp(home: Center(child: SizedBox(
-        width: 160,
-        height: 100,
-        child: GlassShell(
-          path: path,
-          glowCenter: const Offset(80, 50),
-          press: 0,
-          focused: false,
+    final path = Path()
+      ..addRRect(
+        RRect.fromRectAndRadius(
+          const Rect.fromLTWH(20, 20, 120, 60),
+          const Radius.circular(20),
         ),
-      ))),
-    ));
+      );
+    await tester.pumpWidget(
+      FolioSettingsScope(
+        controller: controller,
+        child: MaterialApp(
+          home: Center(
+            child: SizedBox(
+              width: 160,
+              height: 100,
+              child: GlassShell(
+                path: path,
+                glowCenter: const Offset(80, 50),
+                press: 0,
+                focused: false,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
-    expect(tester.widget<BackdropFilter>(find.byType(BackdropFilter)).enabled, isFalse);
-    final shellPaints = tester.widgetList<CustomPaint>(find.descendant(
-      of: find.byType(GlassShell),
-      matching: find.byType(CustomPaint),
-    ));
-    expect(shellPaints.first.painter, isNull); // No outer shadow in blur-off mode.
+    expect(
+      tester.widget<BackdropFilter>(find.byType(BackdropFilter)).enabled,
+      isFalse,
+    );
+    final shellPaints = tester.widgetList<CustomPaint>(
+      find.descendant(
+        of: find.byType(GlassShell),
+        matching: find.byType(CustomPaint),
+      ),
+    );
+    expect(
+      shellPaints.first.painter,
+      isNull,
+    ); // No outer shadow in blur-off mode.
     final material = shellPaints.last.painter!;
     final pixels = await tester.runAsync(() => _paintPixels(material));
     expect(pixels, isNotNull);
@@ -72,49 +88,73 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
-  testWidgets('static panels use the shared rim without changing content inset', (
-    tester,
-  ) async {
-    final controller = FolioSettingsController(
-      store: MemorySettingsStore(const FolioSettings(blurEnabled: false)),
-    );
-    await controller.load();
-    addTearDown(controller.dispose);
-    const caseKey = ValueKey<String>('case');
-    const childKey = ValueKey<String>('case_child');
-    await tester.pumpWidget(FolioSettingsScope(
-      controller: controller,
-      child: MaterialApp(home: Center(child: SizedBox(
-        width: 220,
-        height: 100,
-        child: LiquidCase(
-          key: caseKey,
-          padding: const EdgeInsets.all(10),
-          child: const SizedBox.expand(key: childKey),
+  testWidgets(
+    'static panels use the shared rim without changing content inset',
+    (tester) async {
+      final controller = FolioSettingsController(
+        store: MemorySettingsStore(const FolioSettings(blurEnabled: false)),
+      );
+      await controller.load();
+      addTearDown(controller.dispose);
+      const caseKey = ValueKey<String>('case');
+      const childKey = ValueKey<String>('case_child');
+      await tester.pumpWidget(
+        FolioSettingsScope(
+          controller: controller,
+          child: MaterialApp(
+            home: Center(
+              child: SizedBox(
+                width: 220,
+                height: 100,
+                child: LiquidCase(
+                  key: caseKey,
+                  padding: const EdgeInsets.all(10),
+                  child: const SizedBox.expand(key: childKey),
+                ),
+              ),
+            ),
+          ),
         ),
-      ))),
-    ));
-    await tester.pumpAndSettle();
-    expect(
-      tester.widgetList<CustomPaint>(find.descendant(
-        of: find.byKey(caseKey),
-        matching: find.byType(CustomPaint),
-      )).where((paint) => paint.foregroundPainter is LiquidCaseRimPainter),
-      hasLength(1),
-    );
-    final decorations = tester.widgetList<DecoratedBox>(find.descendant(
-      of: find.byKey(caseKey),
-      matching: find.byType(DecoratedBox),
-    )).map((widget) => widget.decoration).whereType<BoxDecoration>();
-    expect(decorations.any((box) => box.color == LiquidSurfaceStyle.opaqueFill), isTrue);
-    expect(decorations.every((box) => box.border == null), isTrue);
-    final origin = tester.getTopLeft(find.byKey(caseKey));
-    final childOrigin = tester.getTopLeft(find.byKey(childKey));
-    expect(childOrigin.dx - origin.dx, closeTo(10, 0.001));
-    expect(childOrigin.dy - origin.dy, closeTo(10, 0.001));
-    expect(tester.widget<BackdropFilter>(find.byType(BackdropFilter)).enabled, isFalse);
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
+      );
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widgetList<CustomPaint>(
+              find.descendant(
+                of: find.byKey(caseKey),
+                matching: find.byType(CustomPaint),
+              ),
+            )
+            .where((paint) => paint.foregroundPainter is LiquidCaseRimPainter),
+        hasLength(1),
+      );
+      final decorations = tester
+          .widgetList<DecoratedBox>(
+            find.descendant(
+              of: find.byKey(caseKey),
+              matching: find.byType(DecoratedBox),
+            ),
+          )
+          .map((widget) => widget.decoration)
+          .whereType<BoxDecoration>();
+      expect(
+        decorations.any((box) => box.color == darkGlassColors.opaqueFill),
+        isTrue,
+      );
+      expect(decorations.every((box) => box.border == null), isTrue);
+      final origin = tester.getTopLeft(find.byKey(caseKey));
+      final childOrigin = tester.getTopLeft(find.byKey(childKey));
+      expect(childOrigin.dx - origin.dx, closeTo(10, 0.001));
+      expect(childOrigin.dy - origin.dy, closeTo(10, 0.001));
+      // An opaque panel skips the backdrop pipeline entirely: the filter
+      // stays mounted as a passthrough with nothing to sample.
+      expect(
+        tester.widget<BackdropFilter>(find.byType(BackdropFilter)).enabled,
+        isFalse,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 
   testWidgets('painted rim contains bright and dark sections', (tester) async {
     final pixels = await tester.runAsync(() => _paintPixels(_RimProbe()));
@@ -127,12 +167,21 @@ void main() {
   });
 
   test('case rim never intercepts pointer events', () {
-    const painter = LiquidCaseRimPainter(radius: BorderRadius.all(Radius.circular(24)));
+    final painter = LiquidCaseRimPainter(
+      radius: const BorderRadius.all(Radius.circular(24)),
+      rimColors: darkGlassColors.rimColors,
+    );
     expect(painter.hitTest(Offset.zero), isFalse);
     expect(painter.shouldRepaint(painter), isFalse);
-    expect(painter.shouldRepaint(const LiquidCaseRimPainter(
-      radius: BorderRadius.all(Radius.circular(12)),
-    )), isTrue);
+    expect(
+      painter.shouldRepaint(
+        LiquidCaseRimPainter(
+          radius: const BorderRadius.all(Radius.circular(12)),
+          rimColors: darkGlassColors.rimColors,
+        ),
+      ),
+      isTrue,
+    );
   });
 }
 
@@ -158,6 +207,7 @@ class _RimProbe extends CustomPainter {
       canvas,
       Path()..addOval(bounds),
       bounds: bounds,
+      rimColors: darkGlassColors.rimColors,
       width: 4,
     );
   }

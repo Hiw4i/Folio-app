@@ -139,7 +139,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView>
       margin: 0,
       layoutPages: layoutPdfReadingPages,
       sizeDelegateProvider: pdfReadingSizeDelegateProvider,
-      backgroundColor: appColors.background,
+      backgroundColor: context.colors.background,
       pageDropShadow: const BoxShadow(
         color: Color(0x7A000000),
         blurRadius: 12,
@@ -235,8 +235,8 @@ class _PdfDocumentViewState extends State<PdfDocumentView>
       scrollPhysicsScale: const BouncingScrollPhysics(
         decelerationRate: ScrollDecelerationRate.fast,
       ),
-      matchTextColor: appColors.pdfSearchMatch,
-      activeMatchTextColor: appColors.pdfActiveSearchMatch,
+      matchTextColor: context.colors.searchMatch,
+      activeMatchTextColor: context.colors.activeSearchMatch,
       pagePaintCallbacks: <PdfViewerPagePaintCallback>[
         _paintSelection,
         (canvas, rect, page) =>
@@ -266,7 +266,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView>
         // Same unified surface as every other format: dots plus the single
         // `Opening document` line.
         return ColoredBox(
-          color: appColors.background,
+          color: context.colors.background,
           child: ReaderLoadingView(
             document: widget.renderer.document,
             immediate: true,
@@ -504,7 +504,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView>
     }
     final cachedPath = _selectionPaths[page.pageNumber];
     if (cachedPath != null && cachedPath.$1 == pageRect) {
-      canvas.drawPath(cachedPath.$2, Paint()..color = appColors.selection);
+      canvas.drawPath(cachedPath.$2, Paint()..color = context.colors.selection);
       return;
     }
     var text = _selectedPageText[page.pageNumber];
@@ -559,7 +559,7 @@ class _PdfDocumentViewState extends State<PdfDocumentView>
       _paintedSelectionRects.remove(oldest);
       _selectionPaths.remove(oldest);
     }
-    canvas.drawPath(path, Paint()..color = appColors.selection);
+    canvas.drawPath(path, Paint()..color = context.colors.selection);
   }
 
   Widget? _buildContextMenu(
@@ -670,8 +670,8 @@ class _PdfDocumentViewState extends State<PdfDocumentView>
             // pdfrx still paints its rectangular highlight. The page callback
             // above replaces it with the shared rounded silhouette.
             selectionColor: const Color(0x00000000),
-            selectionHandleColor: appColors.selectionHandle,
-            cursorColor: appColors.cursor,
+            selectionHandleColor: context.colors.selectionHandle,
+            cursorColor: context.colors.cursor,
           ),
         ),
         child: Focus(

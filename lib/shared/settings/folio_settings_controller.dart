@@ -21,6 +21,7 @@ class FolioSettingsController extends ChangeNotifier {
   bool _blurChanged = false;
   bool _motionChanged = false;
   bool _navigationChanged = false;
+  bool _themeChanged = false;
   bool _disposed = false;
   Object? _saveError;
 
@@ -42,6 +43,7 @@ class FolioSettingsController extends ChangeNotifier {
         showNavigationOnScrollUp: _navigationChanged
             ? _settings.showNavigationOnScrollUp
             : null,
+        themeMode: _themeChanged ? _settings.themeMode : null,
       );
       if (next != _settings) {
         _settings = next;
@@ -77,6 +79,15 @@ class FolioSettingsController extends ChangeNotifier {
     }
     _navigationChanged = true;
     _settings = _settings.copyWith(showNavigationOnScrollUp: enabled);
+    _changed();
+  }
+
+  void setThemeMode(FolioThemeMode mode) {
+    if (_disposed || mode == _settings.themeMode) {
+      return;
+    }
+    _themeChanged = true;
+    _settings = _settings.copyWith(themeMode: mode);
     _changed();
   }
 

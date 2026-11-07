@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../../support/memory_tutorial_store.dart';
+
 import 'package:folio/app/folio_app.dart';
 import 'package:folio/features/library/data/in_memory_library_repository.dart';
 import 'package:folio/features/settings/widgets/folio_settings_sheet.dart';
+import 'package:folio/shared/glass/widgets/liquid_glass_toggle.dart';
 import 'package:folio/shared/glass/surface/glass_panel.dart';
 import 'package:folio/shared/settings/folio_settings_controller.dart';
 import 'package:folio/shared/settings/folio_settings_scope.dart';
@@ -16,6 +20,7 @@ void main() {
     final store = MemorySettingsStore();
     await tester.pumpWidget(
       FolioApp(
+        tutorialStore: MemoryTutorialStore.allSeen(),
         libraryRepository: InMemoryLibraryRepository.demo(),
         settingsStore: store,
       ),
@@ -32,18 +37,20 @@ void main() {
     final navigation = find.byKey(
       const ValueKey<String>('settings_show_navigation_on_scroll_up'),
     );
-    expect(tester.widget<Switch>(blur).value, isFalse);
-    expect(tester.widget<Switch>(motion).value, isTrue);
-    expect(tester.widget<Switch>(navigation).value, isTrue);
+    expect(tester.widget<LiquidGlassToggle>(blur).value, isFalse);
+    expect(tester.widget<LiquidGlassToggle>(motion).value, isTrue);
+    expect(tester.widget<LiquidGlassToggle>(navigation).value, isTrue);
     await tester.tap(blur);
     await tester.pumpAndSettle();
-    expect(tester.widget<Switch>(blur).value, isTrue);
-    expect(tester.widget<Switch>(motion).value, isTrue);
+    expect(tester.widget<LiquidGlassToggle>(blur).value, isTrue);
+    expect(tester.widget<LiquidGlassToggle>(motion).value, isTrue);
     expect(store.value.blurEnabled, isTrue);
+    // The route barrier blurs; the opaque sheet's own filter is a permanent
+    // passthrough, so "any" — not "every".
     expect(
       tester
           .widgetList<BackdropFilter>(find.byType(BackdropFilter))
-          .every((filter) => filter.enabled),
+          .any((filter) => filter.enabled),
       isTrue,
     );
     await tester.tap(motion);
@@ -60,9 +67,9 @@ void main() {
     expect(find.byType(FolioSettingsSheet), findsNothing);
     await tester.tap(button);
     await tester.pumpAndSettle();
-    expect(tester.widget<Switch>(blur).value, isTrue);
-    expect(tester.widget<Switch>(motion).value, isFalse);
-    expect(tester.widget<Switch>(navigation).value, isFalse);
+    expect(tester.widget<LiquidGlassToggle>(blur).value, isTrue);
+    expect(tester.widget<LiquidGlassToggle>(motion).value, isFalse);
+    expect(tester.widget<LiquidGlassToggle>(navigation).value, isFalse);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
